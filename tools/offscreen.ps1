@@ -1,4 +1,4 @@
-# Pictures of the window without showing it (see offscreen.cs for the script commands).
+﻿# Pictures of the window without showing it (see offscreen.cs for the script commands).
 #   .\tools\offscreen.ps1 -Script steps.txt -Out shots [-Theme dark|light] [-Exe path]
 param([Parameter(Mandatory)][string]$Script, [Parameter(Mandatory)][string]$Out, [string]$Theme = "light", [string]$Exe = "")
 $ErrorActionPreference = 'Stop'

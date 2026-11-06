@@ -1,4 +1,4 @@
-# Builds dist\ZayitTelemetry.exe: one file, with Zayit's font and pictures inside, on the .NET Framework 4.8 that comes
+﻿# Builds dist\ZayitTelemetry.exe: one file, with Zayit's font and pictures inside, on the .NET Framework 4.8 that comes
 # with Windows 10 and 11 (its compiler is part of Windows too). -Install also copies it to
 # %LOCALAPPDATA%\Programs\Zayit Telemetry and adds a Start menu shortcut.
 param(
@@ -38,7 +38,7 @@ if ($Install) {
     Start-Sleep -Milliseconds 300
     New-Item -ItemType Directory -Force $dir | Out-Null
     Copy-Item "$root\dist\ZayitTelemetry.exe" "$dir\ZayitTelemetry.exe" -Force
-    $lnk = "$([Environment]::GetFolderPath('Programs'))\שליחת נתוני חיפוש — זית ואוצריא.lnk"
+    $lnk = "$([Environment]::GetFolderPath('Programs'))\שליחת נתוני חיפוש - זית ואוצריא.lnk"
     $sh = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
     $sh.TargetPath = "$dir\ZayitTelemetry.exe"
     $sh.WorkingDirectory = $dir
