@@ -101,19 +101,40 @@ class MainWindow : Window
             : normal;
 
         Activated += (s, e) => { if (!busy) RescanAndRender(); };
-        NetworkChange.NetworkAvailabilityChanged += OnNetworkChanged;
-        Closed += (s, e) => NetworkChange.NetworkAvailabilityChanged -= OnNetworkChanged;
+        NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+        NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+        Closed += (s, e) =>
+        {
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged;
+            NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        };
 
         RescanAndRender();
     }
 
-    void OnNetworkChanged(object sender, NetworkAvailabilityEventArgs e)
+    void OnNetworkAvailabilityChanged(object sender, NetworkAvailabilityEventArgs e)
     {
-        if (!e.IsAvailable || busy || !autoSend) return;
+        if (e.IsAvailable) TriggerNetworkSend();
+    }
+
+    void OnNetworkAddressChanged(object sender, EventArgs e)
+    {
+        TriggerNetworkSend();
+    }
+
+    void TriggerNetworkSend()
+    {
+        if (busy || !autoSend) return;
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            if (Service.RunAutoOnce())
-                Dispatcher.BeginInvoke(new Action(RescanAndRender));
+            Thread.Sleep(2500);
+            try
+            {
+                if (!NetworkInterface.GetIsNetworkAvailable() || busy || !autoSend) return;
+                if (Service.RunAutoOnce())
+                    Dispatcher.BeginInvoke(new Action(RescanAndRender));
+            }
+            catch { }
         });
     }
 

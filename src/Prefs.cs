@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -200,21 +201,109 @@ static class Prefs
     {
         SetBool("feedback_auto_send", enabled);
         if (TestRoot != null) return;
+        string targetExe = GetInstalledOrRunningExe();
+
+        // 1. Windows Startup Registry Key (HKCU\Software\Microsoft\Windows\CurrentVersion\Run)
         try
         {
             using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true))
             {
-                if (k == null) return;
-                if (enabled)
+                if (k != null)
                 {
-                    string targetExe = GetInstalledOrRunningExe();
-                    if (!string.IsNullOrEmpty(targetExe) && File.Exists(targetExe))
-                        k.SetValue(RunValueName, "\"" + targetExe + "\" --auto", RegistryValueKind.String);
+                    if (enabled)
+                    {
+                        if (!string.IsNullOrEmpty(targetExe) && File.Exists(targetExe))
+                            k.SetValue(RunValueName, "\"" + targetExe + "\" --auto", RegistryValueKind.String);
+                    }
+                    else
+                    {
+                        k.DeleteValue(RunValueName, false);
+                    }
                 }
-                else
+            }
+        }
+        catch { }
+
+        // 2. Windows Task Scheduler Event Trigger on Network Connection (Event 10000 in NetworkProfile/Operational)
+        try
+        {
+            UpdateScheduledTask(targetExe, enabled);
+        }
+        catch { }
+    }
+
+    static void UpdateScheduledTask(string targetExe, bool enabled)
+    {
+        const string taskName = "ZayitTelemetryNetworkSync";
+        try
+        {
+            if (!enabled)
+            {
+                var psiDel = new ProcessStartInfo
                 {
-                    k.DeleteValue(RunValueName, false);
+                    FileName = "schtasks.exe",
+                    Arguments = "/delete /tn \"" + taskName + "\" /f",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                using (var p = Process.Start(psiDel))
+                {
+                    if (p != null) p.WaitForExit(5000);
                 }
+                return;
+            }
+
+            if (string.IsNullOrEmpty(targetExe) || !File.Exists(targetExe)) return;
+
+            string xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+                "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n" +
+                "  <Triggers>\r\n" +
+                "    <EventTrigger>\r\n" +
+                "      <Enabled>true</Enabled>\r\n" +
+                "      <Subscription>&lt;QueryList&gt;&lt;Query Id=\"0\" Path=\"Microsoft-Windows-NetworkProfile/Operational\"&gt;&lt;Select Path=\"Microsoft-Windows-NetworkProfile/Operational\"&gt;*[System[(EventID=10000)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>\r\n" +
+                "    </EventTrigger>\r\n" +
+                "  </Triggers>\r\n" +
+                "  <Principals>\r\n" +
+                "    <Principal>\r\n" +
+                "      <LogonType>InteractiveToken</LogonType>\r\n" +
+                "      <RunLevel>LeastPrivilege</RunLevel>\r\n" +
+                "    </Principal>\r\n" +
+                "  </Principals>\r\n" +
+                "  <Settings>\r\n" +
+                "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n" +
+                "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n" +
+                "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n" +
+                "    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>\r\n" +
+                "  </Settings>\r\n" +
+                "  <Actions Context=\"Author\">\r\n" +
+                "    <Exec>\r\n" +
+                "      <Command>\"" + targetExe.Replace("\"", "") + "\"</Command>\r\n" +
+                "      <Arguments>--auto</Arguments>\r\n" +
+                "    </Exec>\r\n" +
+                "  </Actions>\r\n" +
+                "</Task>";
+
+            string tempXml = Path.Combine(Path.GetTempPath(), "zt_task_" + Guid.NewGuid().ToString("N") + ".xml");
+            File.WriteAllText(tempXml, xml, Encoding.Unicode);
+            try
+            {
+                var psiAdd = new ProcessStartInfo
+                {
+                    FileName = "schtasks.exe",
+                    Arguments = "/create /tn \"" + taskName + "\" /xml \"" + tempXml + "\" /f",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                using (var p = Process.Start(psiAdd))
+                {
+                    if (p != null) p.WaitForExit(5000);
+                }
+            }
+            finally
+            {
+                try { if (File.Exists(tempXml)) File.Delete(tempXml); } catch { }
             }
         }
         catch { }

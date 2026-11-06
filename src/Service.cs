@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -233,6 +234,12 @@ static class Service
     public static bool RunAutoOnce(string overrideUrl = null)
     {
         if (!Prefs.IsAutoSendEnabled()) return false;
+        try
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable()) return false;
+        }
+        catch { }
+
         string url = overrideUrl ?? ResolveUrl();
         if (string.IsNullOrEmpty(url)) return false;
 

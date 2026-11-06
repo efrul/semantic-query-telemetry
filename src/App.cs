@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using Microsoft.Win32;
 
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 
@@ -51,22 +52,58 @@ static class App
             }
 
             // Initial send on startup
-            Service.RunAutoOnce();
-
-            // Periodic background check every 30 minutes while session is alive
-            while (Prefs.IsAutoSendEnabled())
+            try
             {
-                Thread.Sleep(TimeSpan.FromMinutes(30));
-                if (!Prefs.IsAutoSendEnabled()) break;
+                if (NetworkInterface.GetIsNetworkAvailable())
+                    Service.RunAutoOnce();
+            }
+            catch { }
+
+            // Reactive event loop: wakes up instantly on ANY network connection, address assignment, or PC resume
+            using (var wakeEvent = new AutoResetEvent(false))
+            {
+                NetworkAddressChangedEventHandler onAddr = (s, e) => wakeEvent.Set();
+                NetworkAvailabilityChangedEventHandler onAvail = (s, e) => { if (e.IsAvailable) wakeEvent.Set(); };
+                PowerModeChangedEventHandler onPower = (s, e) => { if (e.Mode == PowerModes.Resume) wakeEvent.Set(); };
+
+                NetworkChange.NetworkAddressChanged += onAddr;
+                NetworkChange.NetworkAvailabilityChanged += onAvail;
+                SystemEvents.PowerModeChanged += onPower;
+
                 try
                 {
-                    if (NetworkInterface.GetIsNetworkAvailable())
+                    while (Prefs.IsAutoSendEnabled())
                     {
-                        Service.RunAutoOnce();
+                        // Wait up to 30 minutes, or wake up IMMEDIATELY when network connects / changes or PC resumes
+                        bool triggered = wakeEvent.WaitOne(TimeSpan.FromMinutes(30));
+                        if (!Prefs.IsAutoSendEnabled()) break;
+
+                        if (triggered)
+                        {
+                            // Network changed or reconnected: wait 3 seconds for DHCP/DNS and routing to stabilize
+                            Thread.Sleep(3000);
+                            // Drain any queued triggers during the delay
+                            while (wakeEvent.WaitOne(0)) { }
+                        }
+
+                        try
+                        {
+                            if (NetworkInterface.GetIsNetworkAvailable())
+                            {
+                                Service.RunAutoOnce();
+                            }
+                        }
+                        catch { }
                     }
                 }
-                catch { }
+                finally
+                {
+                    NetworkChange.NetworkAddressChanged -= onAddr;
+                    NetworkChange.NetworkAvailabilityChanged -= onAvail;
+                    SystemEvents.PowerModeChanged -= onPower;
+                }
             }
+
             return 0;
         }
     }
