@@ -5,62 +5,75 @@ using System.Reflection;
 using System.Text;
 using Microsoft.Win32;
 
-// Reads and writes Zayit's and Pardes's preferences in HKCU\Software\JavaSoft\Prefs, using Java's WindowsPreferences
-// encoding: '/' before an uppercase letter, '//' for '/', '/uXXXX' for anything outside ASCII. This way the tool shares
-// Zayit's theme, library path, and feedback sender id and timestamps with the desktop apps.
+// Stores telemetry tool settings under HKCU\Software\ZayitTelemetry.
+// Reads Zayit's theme, accent, and database_path from HKCU\Software\JavaSoft\Prefs.
 static class Prefs
 {
+    public const string ToolKey = @"Software\ZayitTelemetry";
     public const string ZayitKey = @"Software\JavaSoft\Prefs";
-    public const string PardesKey = @"Software\JavaSoft\Prefs\io\github\efrul\pardes";
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string RunValueName = "ZayitTelemetry";
 
     // Overridden in SelfTest so tests never touch the user's real registry settings.
     public static string TestRoot = null;
 
-    static string RootKey(bool pardes)
+    static string RootKey()
     {
-        if (TestRoot != null) return pardes ? TestRoot + @"\pardes" : TestRoot;
-        return pardes ? PardesKey : ZayitKey;
+        if (TestRoot != null) return TestRoot;
+        return ToolKey;
     }
 
     public static string Get(string name, string def = "")
     {
-        var v = GetFromNode(false, name);
-        if (!string.IsNullOrEmpty(v)) return v;
-        v = GetFromNode(true, name);
-        return !string.IsNullOrEmpty(v) ? v : def;
+        // 1. Tool-specific registry key (plain string)
+        try
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(RootKey()))
+            {
+                if (k != null)
+                {
+                    var val = k.GetValue(name) as string;
+                    if (val != null) return val;
+                }
+            }
+        }
+        catch { }
+
+        // 2. Fallback to JavaSoft\Prefs (for Zayit's own theme_mode, accent_color, database_path, or migrated sender)
+        if (TestRoot == null)
+        {
+            try
+            {
+                using (var kz = Registry.CurrentUser.OpenSubKey(ZayitKey))
+                {
+                    if (kz != null)
+                    {
+                        var raw = kz.GetValue(name) as string;
+                        if (raw != null) return FromJava(raw);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        return def;
     }
 
     public static string GetFromNode(bool pardes, string name, string def = "")
     {
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(RootKey(pardes)))
-            {
-                if (k == null) return def;
-                var raw = k.GetValue(name) as string;
-                return raw != null ? FromJava(raw) : def;
-            }
-        }
-        catch { return def; }
+        // Never read from Pardes. Zayit settings come from Get().
+        if (pardes) return def;
+        return Get(name, def);
     }
 
     public static bool Set(string name, string value, bool alsoPardes = false)
     {
         try
         {
-            using (var k = Registry.CurrentUser.CreateSubKey(RootKey(false)))
+            using (var k = Registry.CurrentUser.CreateSubKey(RootKey()))
             {
                 if (k == null) return false;
-                k.SetValue(name, ToJava(value ?? ""), RegistryValueKind.String);
-            }
-            if (alsoPardes)
-            {
-                using (var kp = Registry.CurrentUser.OpenSubKey(RootKey(true), true))
-                {
-                    if (kp != null) kp.SetValue(name, ToJava(value ?? ""), RegistryValueKind.String);
-                }
+                k.SetValue(name, value ?? "", RegistryValueKind.String);
             }
             return true;
         }
@@ -77,7 +90,7 @@ static class Prefs
 
     public static void SetBool(string name, bool val)
     {
-        Set(name, val ? "true" : "false", true);
+        Set(name, val ? "true" : "false");
     }
 
     public static long GetLong(string name, long def = 0L)
@@ -88,10 +101,10 @@ static class Prefs
 
     public static void SetLong(string name, long val)
     {
-        Set(name, val.ToString(CultureInfo.InvariantCulture), true);
+        Set(name, val.ToString(CultureInfo.InvariantCulture));
     }
 
-    // The random UUID v4 sender id, shared with Pardes's feedback_sender when present.
+    // The random UUID v4 sender id for this computer.
     public static string GetSender()
     {
         var s = Get("feedback_sender", "").Trim().ToLowerInvariant();
@@ -103,7 +116,7 @@ static class Prefs
     public static string RenewSender()
     {
         var s = Guid.NewGuid().ToString("D").ToLowerInvariant();
-        Set("feedback_sender", s, true);
+        Set("feedback_sender", s);
         return s;
     }
 
@@ -127,7 +140,7 @@ static class Prefs
         SetBool("feedback_source_" + source, enabled);
     }
 
-    // Per-source and unified sent-at timestamps (epoch milliseconds).
+    // Per-source sent-at timestamps (epoch milliseconds).
     public static long GetSentAt(string source, string kind)
     {
         var specific = GetLong("feedback_sent_" + source + "_" + kind, 0L);
@@ -142,9 +155,10 @@ static class Prefs
         if (source == "zayit") SetLong("feedback_sent_" + kind, at);
     }
 
+    // Auto-send is enabled by default to send search data automatically.
     public static bool IsAutoSendEnabled()
     {
-        return GetBool("feedback_auto_send", false);
+        return GetBool("feedback_auto_send", true);
     }
 
     public static void SetAutoSendEnabled(bool enabled)
@@ -158,9 +172,9 @@ static class Prefs
                 if (k == null) return;
                 if (enabled)
                 {
-                    var exe = Assembly.GetExecutingAssembly().Location;
-                    if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
-                        k.SetValue(RunValueName, "\"" + exe + "\" --auto", RegistryValueKind.String);
+                    string targetExe = GetInstalledOrRunningExe();
+                    if (!string.IsNullOrEmpty(targetExe) && File.Exists(targetExe))
+                        k.SetValue(RunValueName, "\"" + targetExe + "\" --auto", RegistryValueKind.String);
                 }
                 else
                 {
@@ -169,6 +183,31 @@ static class Prefs
             }
         }
         catch { }
+    }
+
+    public static string GetInstalledOrRunningExe()
+    {
+        try
+        {
+            var running = Assembly.GetExecutingAssembly().Location;
+            if (string.IsNullOrEmpty(running) || !File.Exists(running)) return running;
+
+            // Safe permanent location in %LOCALAPPDATA%\Programs\ZayitTelemetry\ZayitTelemetry.exe
+            var localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var permDir = Path.Combine(localApp, "Programs", "ZayitTelemetry");
+            var permExe = Path.Combine(permDir, "ZayitTelemetry.exe");
+
+            if (string.Equals(Path.GetFullPath(running), Path.GetFullPath(permExe), StringComparison.OrdinalIgnoreCase))
+                return permExe;
+
+            Directory.CreateDirectory(permDir);
+            File.Copy(running, permExe, true);
+            return permExe;
+        }
+        catch
+        {
+            return Assembly.GetExecutingAssembly().Location;
+        }
     }
 
     public static string ToJava(string s)

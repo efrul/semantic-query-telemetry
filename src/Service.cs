@@ -21,6 +21,8 @@ static class Service
         }
     }
 
+    public const string DEFAULT_URL = "https://pardes-feedback.pardes.workers.dev";
+
     public static string ResolveUrl()
     {
         var env = Environment.GetEnvironmentVariable("PARDES_FEEDBACK_URL");
@@ -58,7 +60,9 @@ static class Service
             Prefs.Set("feedback_url", fromPardes);
             return fromPardes;
         }
-        return "";
+
+        // Built-in default feedback service endpoint
+        return DEFAULT_URL;
     }
 
     public static bool IsConfigured

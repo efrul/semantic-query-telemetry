@@ -148,6 +148,13 @@ static class SelfTest
         var scanAllAgain = Sources.Scan(true);
         Check(scanAllAgain.Zayit.Searches.Count == 2 && scanAllAgain.Otzaria.Searches.Count == 3,
             "Scan(allFromStart: true) returns all items regardless of sentAt");
+
+        // Test 5: Zayit candidate discovery when pointing directly to seforim.db file
+        Sources.TestZayitRoots = new List<string> { Path.Combine(zayitDbDir, "seforim.db") };
+        var scanFileRoot = Sources.Scan(true);
+        Check(scanFileRoot.Zayit.Found && scanFileRoot.Zayit.Searches.Count == 2,
+            "Zayit candidate discovery from seforim.db file path");
+        Sources.TestZayitRoots = new List<string> { zayitDir };
     }
 
     static void TestSplittingAndFileWrite(string workDir)

@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 class SourceSnapshot
 {
     public string Id;    // "zayit" or "otzaria"
-    public string Title; // "זית / פרדס למחשב" or "אוצריא"
+    public string Title; // "זית" or "אוצריא"
     public bool Found;
     public string PathFound;
     public string LibraryVersion;
@@ -61,7 +61,7 @@ class SourceSnapshot
 
 class ScanResult
 {
-    public SourceSnapshot Zayit = new SourceSnapshot { Id = "zayit", Title = "זית / פרדס למחשב" };
+    public SourceSnapshot Zayit = new SourceSnapshot { Id = "zayit", Title = "זית" };
     public SourceSnapshot Otzaria = new SourceSnapshot { Id = "otzaria", Title = "אוצריא" };
     public bool AllFromStart;
 
@@ -97,6 +97,23 @@ static class Sources
         return Whitespace.Replace(s, " ").Trim();
     }
 
+    public static string NormalizeToDir(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        try
+        {
+            path = path.Trim().Trim('"', '\'');
+            if (File.Exists(path) || path.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+            {
+                var d = Path.GetDirectoryName(Path.GetFullPath(path));
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) return d;
+            }
+            if (Directory.Exists(path)) return Path.GetFullPath(path);
+        }
+        catch { }
+        return null;
+    }
+
     public static long ParseTimeMs(string iso, long fallback = 0L)
     {
         if (string.IsNullOrEmpty(iso)) return fallback;
@@ -117,7 +134,7 @@ static class Sources
         return res;
     }
 
-    // ---- 1. Zayit & Pardes Desktop ----
+    // ---- 1. Zayit (זית) ----
 
     static void ScanZayit(SourceSnapshot snap, bool all)
     {
@@ -135,18 +152,69 @@ static class Sources
         else
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            // 1. Standard AppData and LocalAppData folders
             AddZayitCandidate(Path.Combine(appData, "io.github.kdroidfilter.seforimapp"), "zayit", settingsDbs, libraryDirs);
-            AddZayitCandidate(Path.Combine(appData, "io.github.efrul.pardes"), "pardes", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(localAppData, "io.github.kdroidfilter.seforimapp"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(appData, "זית"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(localAppData, "זית"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(appData, "Zayit"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(localAppData, "Zayit"), "zayit", settingsDbs, libraryDirs);
 
+            // 2. Microsoft Store (AppX/MSIX) packages in %LOCALAPPDATA%\Packages
+            try
+            {
+                var pkgDir = Path.Combine(localAppData, "Packages");
+                if (Directory.Exists(pkgDir))
+                {
+                    foreach (var d in Directory.GetDirectories(pkgDir, "*"))
+                    {
+                        var name = Path.GetFileName(d);
+                        if (name.IndexOf("Zayit", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            name.IndexOf("SeforimApp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            name.StartsWith("KdroidFilter.", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AddZayitCandidate(Path.Combine(d, "LocalCache", "Roaming", "io.github.kdroidfilter.seforimapp"), "zayit", settingsDbs, libraryDirs);
+                            AddZayitCandidate(Path.Combine(d, "LocalCache", "Local", "io.github.kdroidfilter.seforimapp"), "zayit", settingsDbs, libraryDirs);
+                            AddZayitCandidate(Path.Combine(d, "LocalState", "io.github.kdroidfilter.seforimapp"), "zayit", settingsDbs, libraryDirs);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 3. Registry database_path preference
+            var prefLib = Prefs.Get("database_path", "");
+            if (!string.IsNullOrEmpty(prefLib))
+            {
+                AddZayitCandidate(prefLib, "zayit", settingsDbs, libraryDirs);
+                var norm = NormalizeToDir(prefLib);
+                if (!string.IsNullOrEmpty(norm))
+                {
+                    AddZayitLibraryDir(norm, settingsDbs, libraryDirs);
+                    var parent = Path.GetDirectoryName(norm);
+                    if (!string.IsNullOrEmpty(parent))
+                        AddZayitCandidate(parent, "zayit", settingsDbs, libraryDirs);
+                }
+            }
+
+            // 4. Environment variable
             var envLib = Environment.GetEnvironmentVariable("SEFORIMAPP_DATABASE_PATH");
-            if (!string.IsNullOrEmpty(envLib)) AddZayitLibraryDir(envLib, settingsDbs, libraryDirs);
+            if (!string.IsNullOrEmpty(envLib))
+            {
+                AddZayitCandidate(envLib, "zayit", settingsDbs, libraryDirs);
+                var norm = NormalizeToDir(envLib);
+                if (!string.IsNullOrEmpty(norm)) AddZayitLibraryDir(norm, settingsDbs, libraryDirs);
+            }
 
-            var prefLib = Prefs.GetFromNode(false, "database_path", "");
-            if (!string.IsNullOrEmpty(prefLib)) AddZayitLibraryDir(prefLib, settingsDbs, libraryDirs);
+            // 5. Common installation and document locations
+            AddZayitCandidate(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Zayit"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ספריית זית"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(localAppData, "Programs", "Zayit"), "zayit", settingsDbs, libraryDirs);
+            AddZayitCandidate(Path.Combine(localAppData, "Programs", "זית"), "zayit", settingsDbs, libraryDirs);
 
-            var pardesPrefLib = Prefs.GetFromNode(true, "database_path", "");
-            if (!string.IsNullOrEmpty(pardesPrefLib)) AddZayitLibraryDir(pardesPrefLib, settingsDbs, libraryDirs);
-
+            // 6. User-added extra folders
             foreach (var extra in ExtraFolders)
                 AddZayitCandidate(extra, "zayit", settingsDbs, libraryDirs);
         }
@@ -303,24 +371,56 @@ static class Sources
         snap.Daf.AddRange(dafByTractate.Values);
     }
 
-    static void AddZayitCandidate(string dir, string srcTag, List<KeyValuePair<string, string>> dbs, List<string> libs)
+    static void AddZayitCandidate(string path, string srcTag, List<KeyValuePair<string, string>> dbs, List<string> libs)
     {
+        if (string.IsNullOrEmpty(path)) return;
+        path = path.Trim().Trim('"', '\'');
+
+        // Direct user_settings.db file
+        if (path.EndsWith("user_settings.db", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+        {
+            TryAddDb(path, srcTag, dbs);
+            var parentDir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(parentDir)) AddZayitLibraryDir(parentDir, dbs, libs);
+            return;
+        }
+
+        // Direct seforim.db file
+        if (path.EndsWith("seforim.db", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+        {
+            var parentDir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(parentDir))
+            {
+                AddZayitLibraryDir(parentDir, dbs, libs);
+                AddZayitCandidate(parentDir, srcTag, dbs, libs);
+            }
+            return;
+        }
+
+        string dir = NormalizeToDir(path);
         if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
-        // Direct user_settings.db or databases\settings\user_settings.db
+
+        // Check user_settings.db in all known directory structures:
         TryAddDb(Path.Combine(dir, "user_settings.db"), srcTag, dbs);
         TryAddDb(Path.Combine(dir, "settings", "user_settings.db"), srcTag, dbs);
         TryAddDb(Path.Combine(dir, "databases", "settings", "user_settings.db"), srcTag, dbs);
+        TryAddDb(Path.Combine(dir, "databases", "user_settings.db"), srcTag, dbs);
+        TryAddDb(Path.Combine(dir, ".zayit-profile", "io.github.kdroidfilter.seforimapp", "databases", "settings", "user_settings.db"), srcTag, dbs);
+
         AddZayitLibraryDir(dir, dbs, libs);
         AddZayitLibraryDir(Path.Combine(dir, "databases"), dbs, libs);
     }
 
-    static void AddZayitLibraryDir(string libDir, List<KeyValuePair<string, string>> dbs, List<string> libs)
+    static void AddZayitLibraryDir(string path, List<KeyValuePair<string, string>> dbs, List<string> libs)
     {
+        string libDir = NormalizeToDir(path);
         if (string.IsNullOrEmpty(libDir) || !Directory.Exists(libDir)) return;
         string full = Path.GetFullPath(libDir);
         if (!libs.Contains(full)) libs.Add(full);
+        TryAddDb(Path.Combine(full, "user_settings.db"), "zayit", dbs);
         TryAddDb(Path.Combine(full, "settings", "user_settings.db"), "zayit", dbs);
-        // Also check zayit-subset portable profile next to the library
+        TryAddDb(Path.Combine(full, "databases", "settings", "user_settings.db"), "zayit", dbs);
+        TryAddDb(Path.Combine(full, "databases", "user_settings.db"), "zayit", dbs);
         TryAddDb(Path.Combine(full, ".zayit-profile", "io.github.kdroidfilter.seforimapp", "databases", "settings", "user_settings.db"), "zayit", dbs);
     }
 
@@ -370,9 +470,43 @@ static class Sources
         else
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            // 1. Standard AppData and LocalAppData roots
             AddOtzariaRoot(Path.Combine(appData, "otzaria"), dataRoots, dbDirs);
             AddOtzariaRoot(Path.Combine(appData, "com.example", "otzaria"), dataRoots, dbDirs);
+            AddOtzariaRoot(Path.Combine(localAppData, "otzaria"), dataRoots, dbDirs);
+
+            // 2. Read library_path.txt / library_database_path.txt from %APPDATA%\otzaria
+            try
+            {
+                var recDb = Path.Combine(appData, "otzaria", "library_database_path.txt");
+                if (File.Exists(recDb))
+                {
+                    var p = File.ReadAllText(recDb, Encoding.UTF8).Trim('\uFEFF', ' ', '\t', '\r', '\n', '"');
+                    if (!string.IsNullOrEmpty(p) && Directory.Exists(p)) AddOtzariaRoot(p, dataRoots, dbDirs);
+                }
+                var recLib = Path.Combine(appData, "otzaria", "library_path.txt");
+                if (File.Exists(recLib))
+                {
+                    var p = File.ReadAllText(recLib, Encoding.UTF8).Trim('\uFEFF', ' ', '\t', '\r', '\n', '"');
+                    if (!string.IsNullOrEmpty(p))
+                    {
+                        var norm = NormalizeToDir(p);
+                        if (!string.IsNullOrEmpty(norm)) AddOtzariaRoot(norm, dataRoots, dbDirs);
+                    }
+                }
+            }
+            catch { }
+
+            // 3. Known installation locations & portable
             AddOtzariaRoot(@"C:\אוצריא", dataRoots, dbDirs);
+            AddOtzariaRoot(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "אוצריא"), dataRoots, dbDirs);
+            AddOtzariaRoot(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Otzaria"), dataRoots, dbDirs);
+            AddOtzariaRoot(Path.Combine(localAppData, "Programs", "Otzaria"), dataRoots, dbDirs);
+            AddOtzariaRoot(Path.Combine(localAppData, "Programs", "אוצריא"), dataRoots, dbDirs);
+
+            // 4. User-added extra folders
             foreach (var extra in ExtraFolders)
                 AddOtzariaRoot(extra, dataRoots, dbDirs);
         }
