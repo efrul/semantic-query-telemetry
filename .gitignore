@@ -1,0 +1,6 @@
+dist/
+*.user
+# feedback packages saved locally and selftest reports
+pardes-feedback-*.json
+*.part
+selftest-report.txt

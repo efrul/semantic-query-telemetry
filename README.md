@@ -1,0 +1,81 @@
+<div dir="rtl">
+
+<img src="docs/icon.png" width="88" align="left" alt="">
+
+# שליחת נתוני חיפוש — זית ואוצריא
+
+**Collect and send search history, search result feedback grades, and daf review marks from desktop Zayit and Otzaria to the Pardes feedback service (or save them to a local JSON file) to train and evaluate Pardes's semantic search. A 0.5 MB Windows tool.**
+
+בגרסאות האחרונות של פרדס נוסף מנגנון לשליחת היסטוריית החיפושים, דירוגי התוצאות וסימוני צורת הדף כדי לאמן ולשפר את החיפוש הסמנטי. הכלי הקטן הזה מביא את אותה אפשרות בדיוק למשתמשי **זית למחשב** ו**אוצריא** ב־Windows: הוא מזהה לבד את שתי התוכנות, מציג מה נמצא בכל אחת, מאפשר לעיין בחיפושים ולהסיר חיפושים ספציפיים לפני השליחה, ושולח לשירות המשוב של פרדס או שומר לקובץ JSON.
+
+> כלי לא רשמי. אינו קשור למפתחים של זית או אוצריא.
+
+## מה הוא עושה
+
+- **מזהה לבד גם את זית וגם את אוצריא:**
+  - **זית / פרדס למחשב:** קורא את היסטוריית החיפושים (`visit_history`), את הציונים שניתנו לתוצאות החיפוש (`search_feedback`) מ־`user_settings.db`, ואת הסימונים בצורת הדף (`daf-layouts/feedback/*.json`), כולל פרופילים ניידים של `zayit-subset`.
+  - **אוצריא:** קורא את היסטוריית החיפושים מ־`user_state.db` (טבלת `lists` עם `box='history'` ולשוניות חיפוש ב־`window_sessions` ו־`workspaces`), את אירועי החיפוש והדירוג (`like` / `dislike`) מתיקיית `search_feedback/*.jsonl`, וגם היסטוריה ישנה ב־`history.hive`.
+  - אפשר גם להוסיף ידנית כל תיקייה ניידת בכפתור **"הוספת תיקייה…"**.
+- **שליטה מלאה במה שנשלח:**
+  - סימון או הסרה של כל תוכנה (זית / אוצריא) ושל כל סוג מידע (היסטוריית חיפושים, ציונים לתוצאות, סימונים בצורת הדף).
+  - **עיון בחיפושים לפני השליחה:** פתיחת רשימת החיפושים שיישלחו והסרת סימון מכל חיפוש בודד שלא רוצים לשלוח.
+  - ברירת המחדל שולחת רק מה שחדש מאז השליחה הקודמת, עם אפשרות לסמן **"הכל מההתחלה"**.
+- **שליחה אוטומטית ברקע:**
+  - סימון **"שליחה אוטומטית ברקע בהפעלת המחשב ובחיבור לרשת"** רושם את הכלי להפעלה שקטה (`--auto`) בעליית Windows ושולח ברקע כשמתווספים חיפושים חדשים.
+- **פרטיות מלאה ומחיקה מהשרת:**
+  - המשוב נשלח עם מזהה אקראי (`UUID`), בלי שם, בלי חשבון ובלי הערות או סימניות.
+  - החלפת המזהה בלחיצה על **"מזהה חדש"**, או מחיקת כל החבילות שנשלחו עם המזהה הנוכחי מהשרת בלחיצה על **"מחיקת מה ששלחתי מהשרת"** (`DELETE /v1/senders/<id>`).
+- **שמירה לקובץ מקומי:**
+  - שמירת החבילה כקובץ `pardes-feedback-<sender>-<time>.json` בכל תיקייה, בפורמט 1 התואם ל־`collect.py` ולשירות המשוב של פרדס, עם פיצול אוטומטי לחלקים של עד 900KB כשצריך.
+
+העיצוב הוא של זית (Islands): הצבע, הגופן ומצב בהיר או כהה נלקחים מההגדרות של זית במחשב.
+
+## התקנת הכלי
+
+1. מורידים את `ZayitTelemetry.exe` מעמוד ה־[Releases](../../releases/latest).
+2. מפעילים. אין התקנה, ואפשר להחזיק את הקובץ בכל תיקייה.
+
+הקובץ אינו חתום דיגיטלית, ולכן Windows SmartScreen עלול להזהיר בפעם הראשונה. כדי להמשיך לוחצים על "מידע נוסף" ואז על "הפעל בכל זאת".
+
+**דרישות:**
+- Windows 10 או 11. ה־.NET Framework 4.8 ו־`winsqlite3.dll` שהכלי משתמש בהם כבר מובנים ב־Windows (ובנוסף הכלי כולל קורא SQLite B-tree מובנה ב־C# ללא שום תלות חיצונית).
+
+## בנייה מקוד המקור
+
+בלי Visual Studio ובלי חבילות: המהדר של C# שמגיע עם Windows מספיק.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1            # dist\ZayitTelemetry.exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -Install   # וגם התקנה לתפריט התחל
+dist\ZayitTelemetry.exe --selftest C:\Temp\telemetry-test     # בדיקה עצמית מלאה; הדוח ב־selftest-report.txt
+dist\ZayitTelemetry.exe --auto                                # שליחה שקטה ברקע של מה שחדש
+```
+
+אפשר להטמיע את כתובת שירות המשוב בזמן הבנייה עם `-FeedbackUrl https://...` או במשתנה הסביבה `PARDES_FEEDBACK_URL`. אם פרדס למחשב מותקן במחשב, הכלי מזהה ממנו את כתובת השירות אוטומטית.
+
+## מבנה הפרויקט
+
+| קובץ | תפקיד |
+|---|---|
+| `src/App.cs` | נקודת הכניסה, מצב `--auto` לשליחה שקטה ברקע ומצב `--selftest` |
+| `src/MainWindow.cs` | החלון: המקורות שזוהו, בחירת סוגי הנתונים, עיון בחיפושים, שליחה ושמירה לקובץ |
+| `src/Sources.cs` | זיהוי וקריאת הנתונים מזית / פרדס למחשב (`user_settings.db`, `daf-layouts/feedback`) ומאוצריא (`user_state.db`, `search_feedback/*.jsonl`, `history.hive`) |
+| `src/Sqlite.cs` | קריאת קובצי SQLite ב־Read-Only דרך `winsqlite3.dll` של Windows עם קורא B-tree + WAL מובנה ב־C# כגיבוי |
+| `src/Package.cs` | מבנה חבילת המשוב (פורמט 1), פיצול לחלקים של עד 900KB וכתיבה אטומית לקובץ |
+| `src/Service.cs` | שליחת חבילות לשירות המשוב (`POST /v1/packages`), מחיקת נתוני שולח (`DELETE /v1/senders/<id>`) וזיהוי כתובת השרת |
+| `src/Json.cs` | מפענח ומייצא JSON ללא תלויות חיצוניות |
+| `src/Prefs.cs`, `src/Theme.cs` | ההגדרות (`HKCU\Software\JavaSoft\Prefs` ורישום בהפעלת המחשב) והעיצוב של זית, כמו ב־Zayit Move ו־Zayit Export |
+| `src/SelfTest.cs` | בדיקה עצמית מקיפה על מסדי נתונים מדומים של זית ואוצריא ושרת מקומי |
+| `tools/` | הרצת החלון וצילום מסך בלי להציג אותו על השולחן |
+
+## רישיון
+
+AGPL-3.0, עם התנאים הנוספים של זית. ראו `LICENSE`.
+
+**Powered by the technologies that drive Zayit — https://zayitapp.com/**
+
+הכלי משתמש בתמונת הרקע ובענף מהלוגו של [זית](https://github.com/kdroidFilter/Zayit) (AGPL-3.0). הגופן Noto Serif Hebrew מופץ ברישיון SIL Open Font License 1.1, ראו `assets/OFL.txt`.
+
+© 2026 efrul
+
+</div>
