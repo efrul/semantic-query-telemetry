@@ -61,6 +61,18 @@ static class SelfTest
         Check(s1.Length == 36 && Guid.TryParseExact(s1, "D", out g), "Prefs.GetSender generates UUID v4", s1);
         string s2 = Prefs.RenewSender();
         Check(s2 != s1 && Prefs.GetSender() == s2, "Prefs.RenewSender updates sender");
+
+        // Cumulative stats tracking
+        Prefs.RecordSentStats(5, 3, 2);
+        Check(Prefs.GetTotalSentSearches() == 5 && Prefs.GetTotalSentGrades() == 3 && Prefs.GetTotalSentDaf() == 2 && Prefs.GetTotalSentBatches() == 1,
+            "Prefs.RecordSentStats cumulative counters",
+            string.Format("s={0}, g={1}, d={2}, b={3}", Prefs.GetTotalSentSearches(), Prefs.GetTotalSentGrades(), Prefs.GetTotalSentDaf(), Prefs.GetTotalSentBatches()));
+        Prefs.RecordSentStats(2, 1, 0);
+        Check(Prefs.GetTotalSentSearches() == 7 && Prefs.GetTotalSentGrades() == 4 && Prefs.GetTotalSentBatches() == 2,
+            "Prefs.RecordSentStats accumulates across calls");
+        Prefs.ResetSentStats();
+        Check(Prefs.GetTotalSentSearches() == 0 && Prefs.GetTotalSentGrades() == 0 && Prefs.GetTotalSentBatches() == 0,
+            "Prefs.ResetSentStats zeroes counters");
     }
 
     static void TestSourcesAndSqlite(string workDir)
@@ -155,6 +167,29 @@ static class SelfTest
         Check(scanFileRoot.Zayit.Found && scanFileRoot.Zayit.Searches.Count == 2,
             "Zayit candidate discovery from seforim.db file path");
         Sources.TestZayitRoots = new List<string> { zayitDir };
+
+        // Test 6: Cross-file Otzaria segment voting and grade exclusion
+        File.WriteAllLines(Path.Combine(otzFbDir, "seg-001.jsonl"), new[]
+        {
+            "{\"type\":\"search\",\"searchSessionId\":\"s-cross\",\"query\":\"ספק ברכות להקל\",\"clientTime\":\"2026-11-05T13:00:00Z\"}"
+        }, Encoding.UTF8);
+        File.WriteAllLines(Path.Combine(otzFbDir, "seg-002.claimed.jsonl"), new[]
+        {
+            "{\"type\":\"vote\",\"searchSessionId\":\"s-cross\",\"vote\":\"like\",\"clientTime\":\"2026-11-05T13:05:00Z\",\"result\":{\"rank\":1,\"docId\":555,\"title\":\"ברכות\",\"reference\":\"ברכות דף יב עמוד א\"}}"
+        }, Encoding.UTF8);
+        var scanCross = Sources.Scan(true);
+        var crossGrade = scanCross.Otzaria.Grades.Find(g => g.LineId == 555);
+        Check(crossGrade != null && crossGrade.Query == "ספק ברכות להקל" && crossGrade.Grade == 2,
+            "Cross-file Otzaria vote resolves query across segments",
+            crossGrade != null ? ("q=" + crossGrade.Query + ", grade=" + crossGrade.Grade) : "null");
+
+        if (crossGrade != null)
+        {
+            var excludedGrades = new HashSet<string>(StringComparer.Ordinal) { crossGrade.Key };
+            var pkgFilteredGrade = Sources.BuildPackage(scanCross, false, true, false, true, false, null, excludedGrades);
+            Check(!pkgFilteredGrade.Grades.Exists(g => g.Key == crossGrade.Key),
+                "BuildPackage respects per-grade exclusion");
+        }
     }
 
     static void TestSplittingAndFileWrite(string workDir)

@@ -250,7 +250,7 @@ static class Service
         string err = Send(parts, url);
         if (err == null)
         {
-            Sources.RecordSent(scan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn);
+            Sources.RecordSent(scan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, pkg.Searches.Count, pkg.Grades.Count, pkg.DafMarkCount);
             return true;
         }
         return false;

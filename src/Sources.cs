@@ -261,7 +261,7 @@ static class Sources
 
             // Read search_feedback
             var gRows = Sqlite.ReadTable(dbPath, "search_feedback",
-                "SELECT searchKey, query, lineId, bookId, grade, rank, searchCategoryId, searchBookId, searchTocId, searchExtended, model, gradedAt FROM search_feedback",
+                "SELECT * FROM search_feedback",
                 ForceManagedSqlite);
             foreach (var r in gRows)
             {
@@ -555,19 +555,35 @@ static class Sources
             }
         }
 
-        // 2. Read search_feedback/*.jsonl and legacy history.hive in each Otzaria dataRoot
+        // 2. Read search_feedback (all json/jsonl files, including segments, unverified, claimed) and legacy history.hive in each Otzaria dataRoot
+        var sessionQueries = new Dictionary<string, KeyValuePair<string, string>>(StringComparer.Ordinal);
         foreach (var root in dataRoots)
         {
             if (!Directory.Exists(root)) continue;
 
-            // Check search_feedback queue segments (active.jsonl, seg-*.jsonl, unverified/*.jsonl)
-            foreach (var fbSub in new[] { Path.Combine(root, "search_feedback"), Path.Combine(root, "search_feedback", "unverified") })
+            var fbDir = Path.Combine(root, "search_feedback");
+            if (Directory.Exists(fbDir))
             {
-                if (!Directory.Exists(fbSub)) continue;
                 snap.Found = true;
                 if (string.IsNullOrEmpty(snap.PathFound)) snap.PathFound = root;
-                foreach (var file in Directory.GetFiles(fbSub, "*.jsonl"))
-                    ParseOtzariaFeedbackJsonl(file, snap, sinceSearches, sinceGrades, searchesByKey, gradesByKey);
+                try
+                {
+                    var allFbFiles = new List<string>();
+                    foreach (var f in Directory.GetFiles(fbDir, "*.*", SearchOption.AllDirectories))
+                    {
+                        if (f.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                            allFbFiles.Add(f);
+                    }
+
+                    // Pass 1: Index all search queries by searchSessionId and add them to searchesByKey
+                    foreach (var file in allFbFiles)
+                        IndexOtzariaSearches(file, snap, sinceSearches, sessionQueries, searchesByKey);
+
+                    // Pass 2: Extract votes and grades with cross-file sessionQueries resolution
+                    foreach (var file in allFbFiles)
+                        ParseOtzariaVotes(file, snap, sinceGrades, sessionQueries, gradesByKey);
+                }
+                catch { }
             }
 
             // Check legacy history.hive if present
@@ -705,13 +721,13 @@ static class Sources
         }
     }
 
-    static void ParseOtzariaFeedbackJsonl(string file, SourceSnapshot snap, long sinceSearches, long sinceGrades,
-        Dictionary<string, SearchRow> searchesByKey, Dictionary<string, GradeRow> gradesByKey)
+    static void IndexOtzariaSearches(string file, SourceSnapshot snap, long sinceSearches,
+        Dictionary<string, KeyValuePair<string, string>> sessionQueries,
+        Dictionary<string, SearchRow> searchesByKey)
     {
         try
         {
             long fileMs = new DateTimeOffset(File.GetLastWriteTimeUtc(file)).ToUnixTimeMilliseconds();
-            var sessionQueries = new Dictionary<string, KeyValuePair<string, string>>(StringComparer.Ordinal);
             foreach (var rawLine in File.ReadAllLines(file, Encoding.UTF8))
             {
                 var line = rawLine.Trim();
@@ -742,52 +758,87 @@ static class Sources
                     if (clientMs > sinceSearches)
                         AddOtzariaSearch(searchesByKey, q, scope, clientMs);
                 }
-                else if (type == "vote")
-                {
-                    if (clientMs <= sinceGrades) continue;
-                    var vote = Json.Str(obj, "vote", "");
-                    int grade = vote == "like" ? 2 : (vote == "dislike" ? 0 : (int)Json.Long(obj, "grade", -1L));
-                    if (grade != 0 && grade != 2 && grade != 3) continue;
-
-                    string q = CollapseSpaces(Json.Str(obj, "query", ""));
-                    string scope = null;
-                    KeyValuePair<string, string> sess;
-                    if (!string.IsNullOrEmpty(sessionId) && sessionQueries.TryGetValue(sessionId, out sess))
-                    {
-                        if (string.IsNullOrEmpty(q)) q = sess.Key;
-                        scope = sess.Value;
-                    }
-                    if (string.IsNullOrEmpty(q) || q.Length > FeedbackPackage.MAX_QUERY) continue;
-
-                    var resObj = Json.Obj(obj, "result");
-                    long rank = Math.Max(0L, Json.Long(resObj, "rank", 0L));
-                    long docId = Math.Max(0L, Json.Long(resObj, "docId", Json.Long(resObj, "segment", 0L)));
-                    var title = Json.Str(resObj, "title", null);
-                    var heRef = Json.Str(resObj, "reference", null);
-                    string searchKey = "otzaria:" + (scope ?? "") + ":" + q;
-
-                    var g = new GradeRow
-                    {
-                        Query = q,
-                        Search = searchKey,
-                        LineId = docId,
-                        BookId = 0L,
-                        Grade = grade,
-                        Rank = rank,
-                        Source = "otzaria",
-                        Scope = scope,
-                        BookTitle = title,
-                        HeRef = heRef,
-                        GradedAt = clientMs
-                    };
-                    string gk = searchKey + "\u0000" + docId + "\u0000" + (heRef ?? "");
-                    GradeRow prev;
-                    if (!gradesByKey.TryGetValue(gk, out prev) || g.GradedAt >= prev.GradedAt)
-                        gradesByKey[gk] = g;
-                }
             }
         }
         catch { }
+    }
+
+    static void ParseOtzariaVotes(string file, SourceSnapshot snap, long sinceGrades,
+        Dictionary<string, KeyValuePair<string, string>> sessionQueries,
+        Dictionary<string, GradeRow> gradesByKey)
+    {
+        try
+        {
+            long fileMs = new DateTimeOffset(File.GetLastWriteTimeUtc(file)).ToUnixTimeMilliseconds();
+            foreach (var rawLine in File.ReadAllLines(file, Encoding.UTF8))
+            {
+                var line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+                var obj = Json.ParseObj(line);
+                if (obj == null) continue;
+
+                var type = Json.Str(obj, "type", "");
+                if (type != "vote") continue;
+
+                long clientMs = ParseTimeMs(Json.Str(obj, "clientTime", null), fileMs);
+                if (clientMs <= sinceGrades) continue;
+
+                var vote = Json.Str(obj, "vote", "");
+                int grade = vote == "like" ? 2 : (vote == "dislike" ? 0 : (int)Json.Long(obj, "grade", -1L));
+                if (grade != 0 && grade != 2 && grade != 3) continue;
+
+                var sessionId = Json.Str(obj, "searchSessionId", "");
+                string q = CollapseSpaces(Json.Str(obj, "query", ""));
+                string scope = null;
+                KeyValuePair<string, string> sess;
+                if (!string.IsNullOrEmpty(sessionId) && sessionQueries.TryGetValue(sessionId, out sess))
+                {
+                    if (string.IsNullOrEmpty(q)) q = sess.Key;
+                    scope = sess.Value;
+                }
+
+                var resObj = Json.Obj(obj, "result");
+                long rank = Math.Max(0L, Json.Long(resObj, "rank", 0L));
+                long docId = Math.Max(0L, Json.Long(resObj, "docId", Json.Long(resObj, "segment", 0L)));
+                var title = Json.Str(resObj, "title", null);
+                var heRef = Json.Str(resObj, "reference", null);
+
+                // Fallback for query if searchSessionId was in a previous purged batch
+                if (string.IsNullOrEmpty(q))
+                    q = !string.IsNullOrEmpty(title) ? title : (!string.IsNullOrEmpty(heRef) ? heRef : "חיפוש סמנטי");
+                if (q.Length > FeedbackPackage.MAX_QUERY) q = q.Substring(0, FeedbackPackage.MAX_QUERY);
+
+                string searchKey = "otzaria:" + (scope ?? "") + ":" + q;
+
+                var g = new GradeRow
+                {
+                    Query = q,
+                    Search = searchKey,
+                    LineId = docId,
+                    BookId = 0L,
+                    Grade = grade,
+                    Rank = rank,
+                    Source = "otzaria",
+                    Scope = scope,
+                    BookTitle = title,
+                    HeRef = heRef,
+                    GradedAt = clientMs
+                };
+                string gk = searchKey + "\u0000" + docId + "\u0000" + (heRef ?? "") + "\u0000" + clientMs;
+                GradeRow prev;
+                if (!gradesByKey.TryGetValue(gk, out prev) || g.GradedAt >= prev.GradedAt)
+                    gradesByKey[gk] = g;
+            }
+        }
+        catch { }
+    }
+
+    static void ParseOtzariaFeedbackJsonl(string file, SourceSnapshot snap, long sinceSearches, long sinceGrades,
+        Dictionary<string, SearchRow> searchesByKey, Dictionary<string, GradeRow> gradesByKey)
+    {
+        var sess = new Dictionary<string, KeyValuePair<string, string>>(StringComparer.Ordinal);
+        IndexOtzariaSearches(file, snap, sinceSearches, sess, searchesByKey);
+        ParseOtzariaVotes(file, snap, sinceGrades, sess, gradesByKey);
     }
 
     static void ParseOtzariaHistoryHive(string hiveFile, long sinceSearches, Dictionary<string, SearchRow> searchesByKey)
@@ -864,7 +915,8 @@ static class Sources
         bool includeSearches,
         bool includeGrades,
         bool includeDaf,
-        HashSet<string> excludedSearchKeys = null)
+        HashSet<string> excludedSearchKeys = null,
+        HashSet<string> excludedGradeKeys = null)
     {
         var pkg = new FeedbackPackage
         {
@@ -890,13 +942,29 @@ static class Sources
                     pkg.Searches.Add(s);
                 }
             }
-            if (includeGrades) pkg.Grades.AddRange(src.Grades);
+            if (includeGrades)
+            {
+                foreach (var g in src.Grades)
+                {
+                    if (excludedGradeKeys != null && excludedGradeKeys.Contains(g.Key)) continue;
+                    pkg.Grades.Add(g);
+                }
+            }
             if (includeDaf) pkg.Daf.AddRange(src.Daf);
         }
         return pkg;
     }
 
-    public static void RecordSent(ScanResult scan, bool includeZayit, bool includeOtzaria, bool includeSearches, bool includeGrades, bool includeDaf)
+    public static void RecordSent(
+        ScanResult scan,
+        bool includeZayit,
+        bool includeOtzaria,
+        bool includeSearches,
+        bool includeGrades,
+        bool includeDaf,
+        int sentSearches = 0,
+        int sentGrades = 0,
+        int sentDafMarks = 0)
     {
         if (includeZayit && scan.Zayit.Found)
         {
@@ -909,5 +977,6 @@ static class Sources
             if (includeSearches && scan.Otzaria.MaxSearchAt > 0) Prefs.SetSentAt("otzaria", "searches", scan.Otzaria.MaxSearchAt);
             if (includeGrades && scan.Otzaria.MaxGradeAt > 0) Prefs.SetSentAt("otzaria", "grades", scan.Otzaria.MaxGradeAt);
         }
+        Prefs.RecordSentStats(sentSearches, sentGrades, sentDafMarks);
     }
 }

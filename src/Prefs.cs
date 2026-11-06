@@ -155,6 +155,41 @@ static class Prefs
         if (source == "zayit") SetLong("feedback_sent_" + kind, at);
     }
 
+    // Cumulative telemetry statistics across time
+    public static void RecordSentStats(int searches, int grades, int dafMarks)
+    {
+        long totalSearches = GetLong("feedback_total_sent_searches", 0L) + searches;
+        long totalGrades = GetLong("feedback_total_sent_grades", 0L) + grades;
+        long totalDaf = GetLong("feedback_total_sent_daf", 0L) + dafMarks;
+        long totalBatches = GetLong("feedback_total_sent_batches", 0L) + 1L;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        SetLong("feedback_total_sent_searches", totalSearches);
+        SetLong("feedback_total_sent_grades", totalGrades);
+        SetLong("feedback_total_sent_daf", totalDaf);
+        SetLong("feedback_total_sent_batches", totalBatches);
+        SetLong("feedback_last_sent_at", now);
+        if (GetLong("feedback_first_sent_at", 0L) <= 0L)
+            SetLong("feedback_first_sent_at", now);
+    }
+
+    public static long GetTotalSentSearches() { return GetLong("feedback_total_sent_searches", 0L); }
+    public static long GetTotalSentGrades() { return GetLong("feedback_total_sent_grades", 0L); }
+    public static long GetTotalSentDaf() { return GetLong("feedback_total_sent_daf", 0L); }
+    public static long GetTotalSentBatches() { return GetLong("feedback_total_sent_batches", 0L); }
+    public static long GetFirstSentAt() { return GetLong("feedback_first_sent_at", 0L); }
+    public static long GetLastSentAt() { return GetLong("feedback_last_sent_at", 0L); }
+
+    public static void ResetSentStats()
+    {
+        SetLong("feedback_total_sent_searches", 0L);
+        SetLong("feedback_total_sent_grades", 0L);
+        SetLong("feedback_total_sent_daf", 0L);
+        SetLong("feedback_total_sent_batches", 0L);
+        SetLong("feedback_first_sent_at", 0L);
+        SetLong("feedback_last_sent_at", 0L);
+    }
+
     // Auto-send is enabled by default to send search data automatically.
     public static bool IsAutoSendEnabled()
     {

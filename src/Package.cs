@@ -75,6 +75,26 @@ class GradeRow
     public string HeRef;     // Otzaria reference
     public long GradedAt;
 
+    public string Key
+    {
+        get
+        {
+            return (Source ?? "") + "\u0000" + (Search ?? "") + "\u0000" + (Query ?? "") + "\u0000" +
+                   LineId + "\u0000" + BookId + "\u0000" + (HeRef ?? "") + "\u0000" + GradedAt;
+        }
+    }
+
+    public string GradeLabel()
+    {
+        switch (Grade)
+        {
+            case 3: return "בדיוק זה (3)";
+            case 2: return "רלוונטי (2 / 👍)";
+            case 0: return "לא רלוונטי (0 / 👎)";
+            default: return "דירוג " + Grade;
+        }
+    }
+
     public Dictionary<string, object> ToJson()
     {
         var d = new Dictionary<string, object>();

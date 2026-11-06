@@ -27,10 +27,12 @@ class MainWindow : Window
     bool allFromStart;
     bool autoSend;
     bool reviewOpen;
+    bool gradesReviewOpen;
     bool confirmDeleteServer;
     bool editingUrl;
     string urlDraft;
     readonly HashSet<string> excludedKeys = new HashSet<string>(StringComparer.Ordinal);
+    readonly HashSet<string> excludedGradeKeys = new HashSet<string>(StringComparer.Ordinal);
 
     bool busy;
     string busyLabel;
@@ -176,6 +178,7 @@ class MainWindow : Window
 
         content.Children.Add(SourcesCard());
         content.Children.Add(WhatToSendCard());
+        content.Children.Add(SentStatsCard());
         content.Children.Add(ActionsAndPrivacyCard());
 
         var credit = Theme.T("Powered by the technologies that drive Zayit — https://zayitapp.com/", 11.5, "SUB");
@@ -278,6 +281,7 @@ class MainWindow : Window
         var allSearches = ActiveSearches();
         int includedSearches = allSearches.Count(s => !excludedKeys.Contains(s.Key));
         var grades = ActiveGrades();
+        int includedGrades = grades.Count(g => !excludedGradeKeys.Contains(g.Key));
         var daf = ActiveDaf();
         int dafMarks = daf.Sum(r => r.Marks.Count);
 
@@ -300,10 +304,18 @@ class MainWindow : Window
         // 2. Grades checkbox row
         rows.Add(KindRow(
             "הציונים שניתנו לתוצאות החיפוש",
-            grades.Count == 0 ? "אין חדש" : Fmt.Num(grades.Count) + " דירוגים",
+            grades.Count == 0
+                ? "אין חדש"
+                : (includedGrades == grades.Count
+                    ? Fmt.Num(grades.Count) + " דירוגים"
+                    : Fmt.Num(includedGrades) + " מתוך " + Fmt.Num(grades.Count)),
             gradesOn,
             grades.Count > 0,
             val => { gradesOn = val; Prefs.SetKindEnabled("grades", val); Render(); }));
+
+        // Expandable grades review list
+        if (gradesOn && grades.Count > 0)
+            rows.Add(GradesReviewSection(grades, includedGrades));
 
         // 3. Daf marks checkbox row
         rows.Add(KindRow(
@@ -437,13 +449,156 @@ class MainWindow : Window
         return wrap;
     }
 
-    // ---- Card 3: Actions, Auto-Send & Privacy ----
+    UIElement GradesReviewSection(List<GradeRow> allGrades, int includedCount)
+    {
+        var wrap = new StackPanel { Margin = new Thickness(26, 2, 0, 8) };
+        var toggleText = (gradesReviewOpen ? "▾ " : "◂ ") + "עיון בדירוגים שיישלחו (" + Fmt.Num(includedCount) + " מתוך " + Fmt.Num(allGrades.Count) + ")";
+        var toggleBtn = Theme.Btn(this, toggleText, "Link", () => { gradesReviewOpen = !gradesReviewOpen; Render(); });
+        toggleBtn.HorizontalAlignment = HorizontalAlignment.Left;
+        wrap.Children.Add(toggleBtn);
+
+        if (!gradesReviewOpen) return wrap;
+
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+        tools.Children.Add(Theme.Btn(this, "בחר הכל", "Link", () => { excludedGradeKeys.Clear(); Render(); }));
+        var clearBtn = Theme.Btn(this, "נקה הכל", "Link", () =>
+        {
+            foreach (var g in allGrades) excludedGradeKeys.Add(g.Key);
+            Render();
+        });
+        clearBtn.Margin = new Thickness(14, 0, 0, 0);
+        tools.Children.Add(clearBtn);
+        wrap.Children.Add(tools);
+
+        var listStack = new StackPanel();
+        foreach (var item in allGrades.AsEnumerable().Reverse())
+        {
+            var g = item;
+            bool checkedItem = !excludedGradeKeys.Contains(g.Key);
+            var rowGrid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var textPanel = new StackPanel { MaxWidth = 320 };
+            textPanel.Children.Add(new TextBlock
+            {
+                Text = g.Query,
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Theme.B("TEXT")
+            });
+            string detail = !string.IsNullOrEmpty(g.BookTitle) ? g.BookTitle + (!string.IsNullOrEmpty(g.HeRef) ? " · " + g.HeRef : "")
+                          : (!string.IsNullOrEmpty(g.HeRef) ? g.HeRef : ("שורה " + g.LineId));
+            textPanel.Children.Add(new TextBlock
+            {
+                Text = detail,
+                FontSize = 11.5,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Theme.B("SUB")
+            });
+
+            var cb = new CheckBox
+            {
+                Content = textPanel,
+                IsChecked = checkedItem,
+                IsEnabled = !busy
+            };
+            cb.Checked += (sender, e) => { excludedGradeKeys.Remove(g.Key); Render(); };
+            cb.Unchecked += (sender, e) => { excludedGradeKeys.Add(g.Key); Render(); };
+            rowGrid.Children.Add(cb);
+
+            var meta = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            string srcName = g.Source == "otzaria" ? "אוצריא" : "זית";
+            meta.Children.Add(Theme.Pill(srcName, "SUB", "BORDER"));
+
+            string gradeBadge = g.GradeLabel();
+            string badgeBg = g.Grade == 3 ? "ACCENTSOFT" : (g.Grade == 2 ? "ACCENTSOFT" : "REDSOFT");
+            string badgeFg = g.Grade == 3 ? "ACCENT" : (g.Grade == 2 ? "ACCENT" : "RED");
+            var gradePill = Theme.Pill(gradeBadge, badgeFg, badgeBg);
+            gradePill.Margin = new Thickness(6, 0, 0, 0);
+            meta.Children.Add(gradePill);
+
+            Grid.SetColumn(meta, 1);
+            rowGrid.Children.Add(meta);
+
+            listStack.Children.Add(rowGrid);
+        }
+
+        var box = new Border
+        {
+            Background = Theme.B("FIELD"),
+            BorderBrush = Theme.B("BORDER"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10, 6, 10, 6),
+            MaxHeight = 220,
+            Child = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = listStack,
+                Focusable = false
+            }
+        };
+        wrap.Children.Add(box);
+        return wrap;
+    }
+
+    // ---- Card 3: Telemetry Sent Over Time ----
+
+    UIElement SentStatsCard()
+    {
+        long totalSearches = Prefs.GetTotalSentSearches();
+        long totalGrades = Prefs.GetTotalSentGrades();
+        long totalDaf = Prefs.GetTotalSentDaf();
+        long totalBatches = Prefs.GetTotalSentBatches();
+        long firstSent = Prefs.GetFirstSentAt();
+        long lastSent = Prefs.GetLastSentAt();
+
+        var rows = new List<UIElement> { Theme.Title("נתונים שנשלחו לאורך זמן") };
+
+        if (totalBatches == 0 && lastSent == 0)
+        {
+            var emptyTxt = Theme.T("עדיין לא נשלחו נתונים ממחשב זה. כשתשלח או כשהשליחה האוטומטית תפעל, יופיע כאן סיכום מצטבר של כל החיפושים והדירוגים שנמסרו.", 12.5, "SUB");
+            rows.Add(emptyTxt);
+            return Theme.Card(rows.ToArray());
+        }
+
+        var grid = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+
+        var col1 = new StackPanel();
+        col1.Children.Add(Theme.Pair("חיפושים שנשלחו", Fmt.Num(totalSearches)));
+        col1.Children.Add(Theme.Pair("דירוגים שנשלחו", Fmt.Num(totalGrades)));
+        Grid.SetColumn(col1, 0);
+        grid.Children.Add(col1);
+
+        var col2 = new StackPanel();
+        col2.Children.Add(Theme.Pair("חבילות שידור", Fmt.Num(totalBatches)));
+        if (totalDaf > 0)
+            col2.Children.Add(Theme.Pair("שורות צורת הדף", Fmt.Num(totalDaf)));
+        Grid.SetColumn(col2, 1);
+        grid.Children.Add(col2);
+
+        rows.Add(grid);
+
+        var dates = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+        if (firstSent > 0)
+            dates.Children.Add(Theme.Pair("שליחה ראשונה", Fmt.When(firstSent)));
+        if (lastSent > 0)
+            dates.Children.Add(Theme.Pair("שליחה אחרונה", Fmt.When(lastSent)));
+        rows.Add(dates);
+
+        return Theme.Card(rows.ToArray());
+    }
+
+    // ---- Card 4: Actions, Auto-Send & Privacy ----
 
     UIElement ActionsAndPrivacyCard()
     {
         var rows = new List<UIElement> { Theme.Title("שליחה ופרטיות") };
 
-        var pkg = Sources.BuildPackage(scan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys);
+        var pkg = Sources.BuildPackage(scan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys, excludedGradeKeys);
         bool hasAnything = !pkg.IsEmpty;
         string serviceUrl = Service.ResolveUrl();
         bool hasUrl = !string.IsNullOrEmpty(serviceUrl);
@@ -583,7 +738,7 @@ class MainWindow : Window
     {
         if (busy) return;
         var curScan = scan;
-        var pkg = Sources.BuildPackage(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys);
+        var pkg = Sources.BuildPackage(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys, excludedGradeKeys);
         var parts = pkg.Parts();
         if (parts.Count == 0) return;
 
@@ -601,7 +756,7 @@ class MainWindow : Window
                 busy = false;
                 if (err == null)
                 {
-                    Sources.RecordSent(curScan, zOn, oOn, sOn, gOn, dOn);
+                    Sources.RecordSent(curScan, zOn, oOn, sOn, gOn, dOn, pkg.Searches.Count, pkg.Grades.Count, pkg.DafMarkCount);
                     allFromStart = false;
                     statusError = false;
                     statusText = "המשוב נשלח בהצלחה (" +
@@ -624,7 +779,7 @@ class MainWindow : Window
     {
         if (busy) return;
         var curScan = scan;
-        var pkg = Sources.BuildPackage(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys);
+        var pkg = Sources.BuildPackage(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, excludedKeys, excludedGradeKeys);
         var parts = pkg.Parts();
         if (parts.Count == 0) return;
 
@@ -639,7 +794,7 @@ class MainWindow : Window
                 string f = parts[i].WriteTo(folder, i, parts.Count);
                 if (firstFile == null) firstFile = f;
             }
-            Sources.RecordSent(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn);
+            Sources.RecordSent(curScan, zayitOn, otzariaOn, searchesOn, gradesOn, dafOn, pkg.Searches.Count, pkg.Grades.Count, pkg.DafMarkCount);
             allFromStart = false;
             lastSavedFile = firstFile;
             statusError = false;
@@ -677,6 +832,7 @@ class MainWindow : Window
                     foreach (var src in new[] { "zayit", "otzaria" })
                         foreach (var k in new[] { "searches", "grades", "daf" })
                             Prefs.SetSentAt(src, k, 0L);
+                    Prefs.ResetSentStats();
                     statusError = false;
                     statusText = "כל החבילות שנשלחו עם המזהה הזה נמחקו מהשרת.";
                     RescanAndRender();
