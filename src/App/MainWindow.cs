@@ -61,9 +61,10 @@ sealed class MainWindow : Window
                 Height = 301,
                 VerticalAlignment = VerticalAlignment.Top,
                 Fill = new LinearGradientBrush(new GradientStopCollection {
-                    new GradientStop(Color.FromArgb(51, panel.R, panel.G, panel.B), 0),
-                    new GradientStop(Color.FromArgb(102, panel.R, panel.G, panel.B), 0.35),
-                    new GradientStop(Color.FromArgb(204, panel.R, panel.G, panel.B), 0.7),
+                    // Light enough for the picture, strong enough for the words over it
+                    new GradientStop(Color.FromArgb(150, panel.R, panel.G, panel.B), 0),
+                    new GradientStop(Color.FromArgb(185, panel.R, panel.G, panel.B), 0.35),
+                    new GradientStop(Color.FromArgb(225, panel.R, panel.G, panel.B), 0.7),
                     new GradientStop(panel, 1) }, 90)
             });
         }
@@ -342,7 +343,7 @@ sealed class MainWindow : Window
             toggle.Margin = new Thickness(0, 6, 0, 0);
             rows.Add(toggle);
         }
-        if (showList) rows.Add(DetailList());
+        if (showList && (!sel.IsEmpty || left > 0)) rows.Add(DetailList());
         return Theme.Card(rows.ToArray());
     }
 
@@ -366,16 +367,19 @@ sealed class MainWindow : Window
     {
         var list = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
         int shown = 0;
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-        var back = Theme.Btn(this, "להחזיר הכל לשליחה", "Link", () =>
+        if (sel.ExcludedSearches.Count + sel.ExcludedGrades.Count > 0)
         {
-            foreach (var s in sel.ExcludedSearches) ledger.SetExcluded(s.Key, false);
-            foreach (var g in sel.ExcludedGrades) ledger.SetExcluded(g.Key, false);
-            Reselect();
-        });
-        back.IsEnabled = !busy && sel.ExcludedSearches.Count + sel.ExcludedGrades.Count > 0;
-        tools.Children.Add(back);
-        list.Children.Add(tools);
+            var back = Theme.Btn(this, "להחזיר הכל לשליחה", "Link", () =>
+            {
+                foreach (var s in sel.ExcludedSearches) ledger.SetExcluded(s.Key, false);
+                foreach (var g in sel.ExcludedGrades) ledger.SetExcluded(g.Key, false);
+                Reselect();
+            });
+            back.IsEnabled = !busy;
+            back.HorizontalAlignment = HorizontalAlignment.Left;
+            back.Margin = new Thickness(0, 0, 0, 6);
+            list.Children.Add(back);
+        }
 
         foreach (var s in Merge(sel.Searches, sel.ExcludedSearches))
         {
