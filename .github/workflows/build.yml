@@ -1,14 +1,15 @@
-# Builds ZayitTelemetry.exe on Windows with the C# compiler that ships with it and runs the self-test on simulated
-# Zayit and Otzaria databases. Given a version on workflow_dispatch it also publishes a release with the file.
+# Tests the core on Linux (Mono, as C# 5), builds SearchDataSender.exe on Windows with the C# compiler that comes with
+# it, and runs its self-test: the same tests, the registry, and the windows drawn to pictures (uploaded with the exe).
+# Given a version on workflow_dispatch it also publishes a release with the file.
 name: Build
 
 on:
   push:
-    branches: [main, 'שליחת-נתוני-חיפוש']
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
-        description: 'גרסה לפרסום, למשל v1.0.0 (ריק: בנייה ובדיקה בלבד)'
+        description: 'גרסה לפרסום, למשל v2.0.0 (ריק: בנייה ובדיקה בלבד)'
         required: false
         default: ''
 
@@ -16,10 +17,17 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mono
+        run: sudo apt-get update -q && sudo apt-get install -y -q mono-mcs mono-runtime
+      - name: Core tests
+        run: tools/test-core.sh
+
+  windows:
     runs-on: windows-latest
-    env:
-      PARDES_FEEDBACK_URL: ${{ secrets.PARDES_FEEDBACK_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,14 +39,19 @@ jobs:
         shell: powershell
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'selftest'
-          $p = Start-Process dist\ZayitTelemetry.exe -ArgumentList '--selftest', "`"$dir`"" -Wait -PassThru
+          $p = Start-Process dist\SearchDataSender.exe -ArgumentList '--selftest', "`"$dir`"" -Wait -PassThru
           Get-Content "$dir\selftest-report.txt" -Encoding UTF8
+          New-Item -ItemType Directory -Force selftest | Out-Null
+          Copy-Item "$dir\*.png", "$dir\selftest-report.txt" selftest
           if ($p.ExitCode -ne 0) { throw 'self-test failed' }
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: ZayitTelemetry
-          path: dist/ZayitTelemetry.exe
+          name: SearchDataSender
+          path: |
+            dist/SearchDataSender.exe
+            selftest/
 
       - name: Release
         if: github.event_name == 'workflow_dispatch' && inputs.version != ''
@@ -46,4 +59,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "$VERSION" dist/ZayitTelemetry.exe --target "$GITHUB_SHA" --title "שליחת נתוני חיפוש — זית ואוצריא $VERSION" --notes-file .github/release-notes.md
+        run: gh release create "$VERSION" dist/SearchDataSender.exe --target "$GITHUB_SHA" --title "שליחת נתוני חיפוש $VERSION" --notes-file .github/release-notes.md
