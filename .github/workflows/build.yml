@@ -90,6 +90,7 @@ jobs:
             New-ItemProperty $settings -Name $pair[0] -Value $pair[1] -PropertyType String -Force | Out-Null }
           New-Item -ItemType Directory -Force "$data\fonts" | Out-Null
           Set-Content "$data\ledger.txt" 'S x'
+          if (-not (Test-Path $run)) { New-Item $run | Out-Null }
           New-ItemProperty $run -Name SearchDataSender -Value "`"$exe`" --background" -PropertyType String -Force | Out-Null
           Start-Process $exe -ArgumentList '--background'
           Start-Sleep 3
