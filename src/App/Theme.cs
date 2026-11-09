@@ -15,7 +15,7 @@ using Microsoft.Win32;
 
 // Zayit's look (desktop Islands theme): islands on a grey canvas, its accent (Gold unless changed in Zayit),
 // Noto Serif Hebrew, cards with big round corners and a soft border, the title bar tinted with the accent.
-// Light or dark and the accent are Zayit's own settings, so the tool looks as Zayit does on this computer.
+// Light or dark and the accent are Zayit's own settings (read only, ZayitPrefs), so the tool looks as Zayit does here.
 static class Theme
 {
     // Segoe Fluent Icons (Windows 11), Segoe MDL2 Assets (Windows 10): the same code points in both.
@@ -32,7 +32,7 @@ static class Theme
 
     static Theme()
     {
-        var mode = Prefs.Get("theme_mode", "System");
+        var mode = ZayitPrefs.Read("theme_mode") ?? "System";
         if (mode == "Dark") Dark = true;
         else if (mode == "Light" || mode == "LightWithLightHeader") Dark = false;
         else
@@ -44,7 +44,7 @@ static class Theme
             }
             catch { }
         }
-        var forced = Environment.GetEnvironmentVariable("ZAYITTELEMETRY_THEME") ?? Environment.GetEnvironmentVariable("ZAYITMOVE_THEME");
+        var forced = Environment.GetEnvironmentVariable("SEARCH_DATA_SENDER_THEME");
         if (forced == "dark" || forced == "light") Dark = forced == "dark";
 
         // Jewel's Islands palette as Zayit draws it (sampled from Zayit's own window)
@@ -61,7 +61,7 @@ static class Theme
                 { "RED", "#C7222D" }, { "REDSOFT", "#FCE9EA" }, { "WARN", "#8A6100" }, { "WARNSOFT", "#FBF1D9" },
                 { "GREEN", "#2E7D32" }, { "GREENSOFT", "#E8F5E9" },
                 { "TIP", "#2B2D30" }, { "TIPTEXT", "#DFE1E5" } };
-        var accent = Accent(Prefs.Get("accent_color", "Gold"), Dark);
+        var accent = Accent(ZayitPrefs.Read("accent_color") ?? "Gold", Dark);
         P["ACCENT"] = accent;
         P["ONACCENT"] = "#FFFFFF";
         P["ACCENTSOFT"] = Mix(accent, P["PANEL"], 0.14);
@@ -98,7 +98,7 @@ static class Theme
     {
         try
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zayit Telemetry", "fonts");
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SearchDataSender", "fonts");
             var file = Path.Combine(dir, "notoserifhebrew.ttf");
             var data = Resource("notoserifhebrew.ttf");
             if (data != null && (!File.Exists(file) || new FileInfo(file).Length != data.Length))
