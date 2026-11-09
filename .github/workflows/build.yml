@@ -75,7 +75,8 @@ jobs:
           $shell = New-Object -ComObject Shell.Application
           function Shortcut { Get-ChildItem $menu -Filter *.lnk | Where-Object { $f = $shell.NameSpace($_.DirectoryName).ParseName($_.Name); $f.IsLink -and $f.GetLink.Path -eq $exe } }
           function Background { Get-Process SearchDataSender -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } }
-          function Check($ok, $name) { if (-not $ok) { throw "FAIL  $name" }; Write-Host "PASS  $name" }
+          $script:failed = 0
+          function Check($ok, $name) { if ($ok) { Write-Host "PASS  $name" } else { Write-Host "FAIL  $name"; $script:failed++ } }
           # Not Start-Process -Wait, which waits for the background sender the installer starts too
           function Setup { $p = Start-Process dist\SearchDataSender-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru; $null = $p.Handle; $p.WaitForExit(); $p.ExitCode }
 
@@ -103,7 +104,8 @@ jobs:
           Check ($after -and -not ($after | Where-Object { $_.Id -eq $before.Id })) 'update: the background sender stopped and started again from the new file'
 
           $uninstaller = (Get-ItemProperty $entry).UninstallString.Trim('"')
-          $p = Start-Process $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
+          $log = "$env:RUNNER_TEMP\uninstall.log"
+          $p = Start-Process $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"" -PassThru
           $p.WaitForExit()
           # The uninstaller goes on from a copy of itself in the temp folder
           for ($i = 0; $i -lt 120 -and ((Test-Path $app) -or (Test-Path $entry)); $i++) { Start-Sleep -Milliseconds 500 }
@@ -115,6 +117,7 @@ jobs:
           Check ($null -eq (Get-ItemProperty $run -Name SearchDataSender -ErrorAction SilentlyContinue)) 'uninstall: out of Windows startup'
           Check (-not (Test-Path $settings)) 'uninstall: the settings gone'
           Check (-not (Test-Path $data)) 'uninstall: the ledger and data folder gone'
+          if ($script:failed) { if (Test-Path $log) { Get-Content $log | Write-Host }; throw "$script:failed failed" }
 
       - uses: actions/upload-artifact@v4
         if: always()

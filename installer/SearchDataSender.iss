@@ -55,10 +55,6 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\SearchDataSender.exe"; Tasks:
 Filename: "{app}\SearchDataSender.exe"; Parameters: "--background"; Flags: nowait runhidden; Check: BackgroundWasOn
 Filename: "{app}\SearchDataSender.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-Filename: "{app}\SearchDataSender.exe"; Parameters: "--uninstall"; RunOnceId: "Remove"; Check: not UninstallSilent
-Filename: "{app}\SearchDataSender.exe"; Parameters: "--uninstall --quiet"; RunOnceId: "RemoveQuiet"; Flags: runhidden; Check: UninstallSilent
-
 [Code]
 const
   EVENT_MODIFY_STATE = $0002;
@@ -103,8 +99,19 @@ begin
   Result := BackgroundOn;
 end;
 
+{ Before the files go: SearchDataSender.exe --uninstall (Uninstall.cs), which asks whether to delete from the server
+  what was sent, takes the tool out of Windows' startup and removes its settings and data; asking nothing when silent.
+  Here and not in [UninstallRun], whose Check is decided when installing }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Params: String;
+  ResultCode: Integer;
 begin
-  if CurUninstallStep = usUninstall then
-    StopBackground;
+  if CurUninstallStep <> usUninstall then
+    Exit;
+  StopBackground;
+  Params := '--uninstall';
+  if UninstallSilent then
+    Params := Params + ' --quiet';
+  Exec(ExpandConstant('{app}\SearchDataSender.exe'), Params, '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
 end;
