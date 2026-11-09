@@ -70,9 +70,10 @@ jobs:
           $settings = 'HKCU:\Software\SearchDataSender'
           $data = "$env:LOCALAPPDATA\SearchDataSender"
           $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $menus = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs"
           $shell = New-Object -ComObject WScript.Shell
-          function Shortcut { Get-ChildItem $menu -Filter *.lnk | Where-Object { $shell.CreateShortcut($_.FullName).TargetPath -eq $exe } }
+          function Links { Get-ChildItem $menus -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; Target = $shell.CreateShortcut($_.FullName).TargetPath } } }
+          function Shortcut { Links | Where-Object { $_.Target -like '*\Programs\SearchDataSender\SearchDataSender.exe' } }
           function Background { Get-Process SearchDataSender -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } }
           function Check($ok, $name) { if (-not $ok) { throw "FAIL  $name" }; Write-Host "PASS  $name" }
           # Not Start-Process -Wait, which waits for the background sender the installer starts too
@@ -81,6 +82,7 @@ jobs:
           Check ((Setup) -eq 0) 'setup: runs'
           Check (Test-Path $exe) 'setup: the tool in its folder'
           Check ((Get-ItemProperty $entry).DisplayName -and (Get-ItemProperty $entry).UninstallString) 'setup: an entry in Settings > Apps'
+          if (-not (Shortcut)) { Links | Where-Object { $_.Path -notlike '*\Windows PowerShell\*' } | Format-Table -AutoSize | Out-String -Width 300 | Write-Host }
           Check (Shortcut) 'setup: a Start menu entry'
 
           # As after a while: consent, background sending on and running, a ledger
