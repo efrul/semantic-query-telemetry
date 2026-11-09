@@ -36,7 +36,6 @@ static class Program
                 return 0;
             }
             var deps = Deps.ForThisComputer();
-            bool oldStopped = OldVersion.Stop();
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.DispatcherUnhandledException += (s, e) =>
             {
@@ -46,12 +45,11 @@ static class Program
             };
             if (!deps.Settings.HasConsent)
             {
-                var consent = new ConsentWindow(deps.Settings, oldStopped, deps.Now);
+                var consent = new ConsentWindow(deps.Settings, deps.Now);
                 if (consent.ShowDialog() != true) return 0;
                 if (consent.AutoSendChosen) deps.SetAutoSend(true);
-                oldStopped = false;
             }
-            var window = new MainWindow(deps, oldStopped);
+            var window = new MainWindow(deps);
             var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Places.ShowEvent);
             ThreadPool.RegisterWaitForSingleObject(showEvent, (o, timedOut) => window.Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -80,7 +78,7 @@ sealed class Deps
         var settings = new Settings(new RegistryStore(Places.SettingsKey));
         var d = new Deps { Settings = settings, ManageStartup = true };
         d.OpenLedger = () => new Ledger(Places.Ledger);
-        d.MakeReaders = () => Readers.For(settings, ZayitPrefs.Read("database_path"), d.Now);
+        d.MakeReaders = () => Readers.For(settings, ZayitPrefs.Read("database_path"), ZayitPrefs.ReadPardes("database_path"), d.Now);
         d.MakeService = () => new HttpService(settings.ServiceUrl);
         return d;
     }
@@ -104,7 +102,7 @@ sealed class ConsentWindow : Window
     readonly CheckBox auto;
     public bool AutoSendChosen;
 
-    public ConsentWindow(Settings settings, bool oldStopped, Func<long> now)
+    public ConsentWindow(Settings settings, Func<long> now)
     {
         Theme.Dress(this);
         Title = AppInfo.Name;
@@ -121,14 +119,11 @@ sealed class ConsentWindow : Window
         head.Margin = new Thickness(2, 0, 0, 10);
         body.Children.Add(head);
 
-        if (oldStopped)
-            body.Children.Add(Theme.Note(Theme.G_INFO, "הגרסה הקודמת של הכלי שלחה נתונים ברקע בלי לשאול. השליחה שלה הופסקה, ומעכשיו שום דבר לא יישלח בלי שתסכים.", "WARN", "WARNSOFT"));
-
         body.Children.Add(Theme.Card(
             Theme.Title("מה הכלי עושה"),
-            Para("הוא קורא במחשב הזה את החיפושים שעשית בזית ובאוצריא, ואת הדירוגים שנתת לתוצאות של החיפוש החכם באוצריא, ושולח אותם למאגר החיפושים הפתוח. המטרה: לשפר את החיפוש בכל תוכנות הספרייה התורנית."),
+            Para("הוא קורא במחשב הזה את החיפושים שעשית בזית, בפרדס ובאוצריא, את הדירוגים שנתת לתוצאות בפרדס ובחיפוש החכם של אוצריא, ואת הסימונים שלך בצורת הדף של פרדס, ושולח אותם למאגר החיפושים הפתוח. המטרה: לשפר את החיפוש בכל תוכנות הספרייה התורנית."),
             Theme.Title("מה מתפרסם"),
-            Para("כל מה שנשלח מתפרסם באתר המאגר, לכולם, וזמין להורדה: המילים שחיפשת, היקף החיפוש, כמה פעמים ומתי, והדירוגים שנתת. אם חיפשת משהו שאינך רוצה שיתפרסם, אפשר להוריד אותו מהרשימה לפני השליחה."),
+            Para("כל מה שנשלח מתפרסם באתר המאגר, לכולם, וזמין להורדה: המילים שחיפשת, היקף החיפוש, כמה פעמים ומתי, הדירוגים שנתת והסימונים בצורת הדף. אם חיפשת משהו שאינך רוצה שיתפרסם, אפשר להוריד אותו מהרשימה לפני השליחה."),
             Theme.Title("מה לא נשלח"),
             Para("שם, חשבון, כתובת IP, פרטי המחשב, הערות, סימניות, והספרים שפתחת. כל השליחות מהמחשב הזה מסומנות במספר אקראי, שלא מוצג באתר."),
             Theme.Title("השליטה שלך"),

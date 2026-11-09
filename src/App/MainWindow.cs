@@ -16,7 +16,6 @@ sealed class MainWindow : Window
 
     readonly Deps d;
     readonly StackPanel content = new StackPanel { Margin = new Thickness(18, 14, 18, 18) };
-    readonly bool oldStopped;
 
     List<SourceData> data;
     Selection sel;
@@ -26,10 +25,9 @@ sealed class MainWindow : Window
     bool statusBad;
     long readAt;
 
-    public MainWindow(Deps deps, bool oldStopped)
+    public MainWindow(Deps deps)
     {
         d = deps;
-        this.oldStopped = oldStopped;
         ledger = d.OpenLedger();
         Theme.Dress(this);
         Title = AppInfo.Name;
@@ -77,7 +75,7 @@ sealed class MainWindow : Window
         StateChanged += (s, e) => island.Margin = WindowState == WindowState.Maximized
             ? new Thickness(normal.Left + 7, normal.Top, normal.Right + 7, normal.Bottom + 7) : normal;
         Loaded += (s, e) => StartRead();
-        // Back to the window after searching in Zayit or Otzaria: read again, at most every half minute
+        // Back to the window after searching in Zayit, Pardes or Otzaria: read again, at most every half minute
         Activated += (s, e) => { if (!busy && data != null && d.Now() - readAt > 30000) StartRead(); };
         Render();
     }
@@ -88,7 +86,7 @@ sealed class MainWindow : Window
     {
         if (busy) return;
         busy = true;
-        busyText = "קורא את הנתונים של זית ואוצריא…";
+        busyText = "קורא את הנתונים של זית, פרדס ואוצריא…";
         Render();
         ThreadPool.QueueUserWorkItem(_ =>
         {
@@ -248,7 +246,7 @@ sealed class MainWindow : Window
 
     void AddFolder()
     {
-        var folder = FolderPicker.Pick(this, "תיקייה של זית או של אוצריא (למשל עותק נייד)");
+        var folder = FolderPicker.Pick(this, "תיקייה של זית, של פרדס או של אוצריא (למשל עותק נייד)");
         if (string.IsNullOrEmpty(folder)) return;
         var list = d.Settings.ExtraFolders;
         if (!list.Exists(f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase))) list.Add(folder);
@@ -269,12 +267,9 @@ sealed class MainWindow : Window
         h.VerticalAlignment = VerticalAlignment.Center;
         head.Children.Add(h);
         content.Children.Add(head);
-        var sub = Theme.T("החיפושים שלך בזית ובאוצריא, למאגר החיפושים הפתוח, כדי לשפר את החיפוש בספרייה התורנית.", 13, "SUB");
+        var sub = Theme.T("החיפושים שלך בזית, בפרדס ובאוצריא, למאגר החיפושים הפתוח, כדי לשפר את החיפוש בספרייה התורנית.", 13, "SUB");
         sub.Margin = new Thickness(2, 0, 0, 14);
         content.Children.Add(sub);
-
-        if (oldStopped)
-            content.Children.Add(Theme.Note(Theme.G_INFO, "הגרסה הקודמת של הכלי שלחה ברקע בלי לשאול. השליחה שלה הופסקה.", "WARN", "WARNSOFT"));
 
         if (data == null)
         {
@@ -315,7 +310,7 @@ sealed class MainWindow : Window
         add.IsEnabled = !busy;
         add.HorizontalAlignment = HorizontalAlignment.Left;
         add.Margin = new Thickness(0, 8, 0, 0);
-        add.ToolTip = "עותק נייד של זית או של אוצריא, או תיקיית נתונים שהועברה";
+        add.ToolTip = "עותק נייד של זית, של פרדס או של אוצריא, או תיקיית נתונים שהועברה";
         rows.Add(add);
         return Theme.Card(rows.ToArray());
     }

@@ -33,12 +33,12 @@ public static class Limits
     public const int PartBytes = 900000; // a part at most, as the apps split theirs; the service takes 1,000,000
 }
 
-public enum Source { Zayit, Otzaria }
+public enum Source { Zayit, Pardes, Otzaria }
 
 public static class Sources
 {
-    public static string Id(Source s) { return s == Source.Zayit ? "zayit" : "otzaria"; }
-    public static string Name(Source s) { return s == Source.Zayit ? "זית" : "אוצריא"; }
+    public static string Id(Source s) { return s == Source.Zayit ? "zayit" : s == Source.Pardes ? "pardes" : "otzaria"; }
+    public static string Name(Source s) { return s == Source.Zayit ? "זית" : s == Source.Pardes ? "פרדס" : "אוצריא"; }
 }
 
 public sealed class SearchRow
@@ -184,7 +184,7 @@ public sealed class GradeRow
     }
 }
 
-// A line of the daf view checked in Zayit's daf review (daf-layouts/feedback/<tractate>.json).
+// A line of the daf view checked in Pardes's daf review (<library>\pardes-daf\feedback\<tractate>.json).
 public sealed class DafMark
 {
     public string Tractate, TractateHe, Library;

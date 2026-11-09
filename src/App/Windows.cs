@@ -136,50 +136,6 @@ static class Startup
     }
 }
 
-// The first version of this tool (ZayitTelemetry, v1.x) sent in the background without asking: a Run entry, a scheduled
-// task on every network connection, and a copy in %LOCALAPPDATA%\Programs\ZayitTelemetry. This stops all three. It
-// touches nothing else of that version and nothing of any other app.
-static class OldVersion
-{
-    const string OldRunValue = "ZayitTelemetry";
-    const string OldTask = "ZayitTelemetryNetworkSync";
-    const string OldKey = @"Software\ZayitTelemetry";
-
-    // True when something of the old version was found and stopped.
-    public static bool Stop()
-    {
-        bool found = false;
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(Places.RunKey, true))
-                if (k != null && k.GetValue(OldRunValue) != null) { k.DeleteValue(OldRunValue, false); found = true; }
-        }
-        catch (UnauthorizedAccessException) { }
-        try
-        {
-            // A running old copy checks this before each send and stops when it is false
-            using (var k = Registry.CurrentUser.OpenSubKey(OldKey, true))
-                if (k != null && k.GetValue("feedback_auto_send") as string != "false") { k.SetValue("feedback_auto_send", "false"); found = true; }
-        }
-        catch (UnauthorizedAccessException) { }
-        try
-        {
-            var p = Process.Start(new ProcessStartInfo("schtasks.exe", "/delete /tn \"" + OldTask + "\" /f")
-            {
-                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-            });
-            if (p != null)
-            {
-                p.WaitForExit(10000);
-                if (p.HasExited && p.ExitCode == 0) found = true;
-                p.Dispose();
-            }
-        }
-        catch (System.ComponentModel.Win32Exception) { }
-        return found;
-    }
-}
-
 // The background sender (SearchDataSender.exe --background): one per user session, sending what is new when the
 // network comes back and every hour, while the user's consent and choice to send in the background stand.
 static class Background
@@ -248,7 +204,8 @@ static class Background
             if (lk == null) return;
             settings.LastAttemptAt = now;
             var ledger = new Ledger(Places.Ledger);
-            var data = Engine.ReadAll(Readers.For(settings, ZayitPrefs.Read("database_path"), () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            var data = Engine.ReadAll(Readers.For(settings, ZayitPrefs.Read("database_path"), ZayitPrefs.ReadPardes("database_path"),
+                () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
             var sel = Engine.Select(data, settings, ledger);
             if (sel.IsEmpty) return;
             Engine.Send(sel, settings, ledger, new HttpService(settings.ServiceUrl),

@@ -4,18 +4,23 @@ using System.IO;
 using System.Text;
 using Microsoft.Win32;
 
-// Zayit's own preferences, read only, for its look (theme_mode, accent_color) and its library's place (database_path).
-// Zayit keeps them in the root Java preferences node, HKCU\Software\JavaSoft\Prefs, escaped by the JDK (JavaPrefs).
-// Nothing else is read there, and nothing is ever written.
+// Zayit's and Pardes's own preferences, read only: their look (theme_mode, accent_color, Zayit's) and their library's
+// place (database_path). Zayit keeps them in the root Java preferences node, HKCU\Software\JavaSoft\Prefs; Pardes in its
+// own node under it, io\github\efrul\pardes (Brand.settings()); both escaped by the JDK (JavaPrefs). Nothing else is
+// read there, and nothing is ever written.
 static class ZayitPrefs
 {
-    const string Node = @"Software\JavaSoft\Prefs";
+    const string Root = @"Software\JavaSoft\Prefs";
+    const string PardesNode = Root + @"\io\github\efrul\pardes";
 
-    public static string Read(string name)
+    public static string Read(string name) { return ReadAt(Root, name); }
+    public static string ReadPardes(string name) { return ReadAt(PardesNode, name); }
+
+    static string ReadAt(string node, string name)
     {
         try
         {
-            using (var k = Registry.CurrentUser.OpenSubKey(Node))
+            using (var k = Registry.CurrentUser.OpenSubKey(node))
             {
                 var raw = k == null ? null : k.GetValue(name) as string;
                 return raw == null ? null : JavaPrefs.Decode(raw);
