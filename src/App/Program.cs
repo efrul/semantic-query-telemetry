@@ -14,7 +14,7 @@ using System.Windows.Interop;
 [assembly: System.Reflection.AssemblyFileVersion(AppInfo.Version + ".0")]
 
 // SearchDataSender.exe: the window; --background: the background sender (only when the user turned it on);
-// --uninstall [--quiet]: what the uninstaller runs before it removes the files (Uninstall.cs);
+// --uninstall: what the uninstaller runs before it removes the files (Uninstall.cs);
 // --selftest <folder>: the tests, with a report and pictures of the windows in <folder>.
 static class Program
 {
@@ -37,7 +37,7 @@ static class Program
         if (args.Length >= 1 && args[0] == "--background")
             return Background.Run();
         if (args.Length >= 1 && args[0] == "--uninstall")
-            return Uninstall.Run(Array.IndexOf(args, "--quiet") > 0);
+            return Uninstall.Run();
 
         bool first;
         var mutex = new Mutex(true, Places.WindowMutex, out first);

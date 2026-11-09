@@ -2,14 +2,13 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using System.Windows;
 using Microsoft.Win32;
 
 // Taking the tool off this computer. The installer (installer\SearchDataSender.iss, Inno Setup) puts it in
 // %LOCALAPPDATA%\Programs\SearchDataSender for this user, with an entry in Settings › Apps. Removing it there, or with
 // the window's "הסרת הכלי מהמחשב", runs its uninstaller, which runs SearchDataSender.exe --uninstall before it removes
-// the files: this asks whether to delete from the server what was sent, stops the background sender and takes it out
-// of Windows' startup, and removes the tool's settings key and data folder. Nothing of another app is touched.
+// the files: this stops the background sender and takes it out of Windows' startup, and removes the tool's settings key
+// and data folder. Nothing of another app is touched, and nothing on the server.
 static class Uninstall
 {
     // The installer's AppId: its entry in Settings › Apps is HKCU\...\Uninstall\<AppId>_is1
@@ -33,50 +32,24 @@ static class Uninstall
         catch (IOException) { return null; }
     }
 
-    // SearchDataSender.exe --uninstall [--quiet]. Quiet (a silent uninstall) asks nothing, and deletes nothing from the
-    // server.
-    public static int Run(bool quiet)
+    // SearchDataSender.exe --uninstall
+    public static int Run()
     {
-        Remove(quiet, false);
+        Remove(false);
         return 0;
     }
 
-    // Returns false when deleting from the server failed: then the settings stay, with the sender id, to try again after
-    // installing. [dataAfterExit]: the data folder once this process is gone (its window holds the font).
-    public static bool Remove(bool quiet, bool dataAfterExit)
+    // [dataAfterExit]: the data folder once this process is gone (its window holds the font). What was sent stays on the
+    // server: the window's "מחיקת כל מה ששלחתי" deletes it.
+    public static void Remove(bool dataAfterExit)
     {
         Startup.TurnOff();
-        var settings = new Settings(new RegistryStore(Places.SettingsKey));
-        bool keep = false;
-        if (!quiet && SentFromHere(settings) &&
-            Say("למחוק גם מהשרת ומהאתר את כל מה שנשלח מהמחשב הזה?\n\nבלי מחיקה, מה שנשלח נשאר במאגר החיפושים הפתוח.",
-                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-        {
-            var answer = new HttpService(settings.ServiceUrl).DeleteSender(settings.Sender);
-            if (!answer.Ok)
-            {
-                keep = true;
-                Say("המחיקה מהשרת לא הצליחה: " + answer.Message() + "\n\nההגדרות של הכלי נשארות במחשב, כדי שאם תתקין אותו שוב תוכל למחוק משם.",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-        if (keep) return false;
         if (!dataAfterExit) Clean(Places.SettingsKey, Places.Data);
         else
         {
             Clean(Places.SettingsKey, null);
             CleanAfterExit();
         }
-        return true;
-    }
-
-    // Something was sent with this computer's id: the window's figures, or the ledger
-    static bool SentFromHere(Settings settings)
-    {
-        if (settings.SentPackages > 0) return true;
-        try { return File.Exists(Places.Ledger) && new Ledger(Places.Ledger).SentCount > 0; }
-        catch (IOException) { return false; }
-        catch (UnauthorizedAccessException) { return false; }
     }
 
     // Removes the tool's settings key and data folder (the ledger, the unpacked font). Public for the self-test.
@@ -100,11 +73,5 @@ static class Uninstall
         var args = "/d /c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"" + Places.Data + "\"";
         try { Process.Start(new ProcessStartInfo(cmd, args) { UseShellExecute = false, CreateNoWindow = true }); }
         catch (System.ComponentModel.Win32Exception) { }
-    }
-
-    static MessageBoxResult Say(string text, MessageBoxButton buttons, MessageBoxImage image)
-    {
-        return MessageBox.Show(text, AppInfo.Name, buttons, image, buttons == MessageBoxButton.YesNo ? MessageBoxResult.No : MessageBoxResult.OK,
-            MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
     }
 }

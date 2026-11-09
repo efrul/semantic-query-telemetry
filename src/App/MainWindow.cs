@@ -239,7 +239,7 @@ sealed class MainWindow : Window
     }
 
     // The uninstaller of Settings › Apps when the installer put the tool here, which asks itself; else, the bare exe,
-    // the same removal from here after asking
+    // the same removal from here after asking. What was sent stays on the server unless deleted first
     void RemoveTool()
     {
         if (!d.ManageStartup) return;
@@ -253,7 +253,7 @@ sealed class MainWindow : Window
     void RemoveHere()
     {
         confirmRemove = false;
-        if (!Uninstall.Remove(false, true)) { Render(); return; }
+        Uninstall.Remove(true);
         MessageBox.Show(this, "הכלי הוסר מהמחשב. אפשר למחוק עכשיו גם את הקובץ שלו:\n" + Places.RunningExe, AppInfo.Name,
             MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
         Close();
@@ -502,7 +502,7 @@ sealed class MainWindow : Window
         }
         else if (confirmRemove)
         {
-            rows.Add(Theme.Note(Theme.G_WARN, "להסיר את הכלי מהמחשב? השליחה ברקע תיפסק, וההגדרות שלו ורשימת מה שנשלח יימחקו. את הקובץ עצמו אפשר למחוק אחר כך.", "WARN", "WARNSOFT"));
+            rows.Add(Theme.Note(Theme.G_WARN, "להסיר את הכלי מהמחשב? השליחה ברקע תיפסק, וההגדרות שלו ורשימת מה שנשלח יימחקו. מה שכבר נשלח נשאר במאגר, אלא אם תמחק אותו קודם. את הקובץ עצמו אפשר למחוק אחר כך.", "WARN", "WARNSOFT"));
             rows.Add(Theme.Row(Theme.Btn(this, "הסרה", "Danger", RemoveHere), Theme.Btn(this, "חזרה", "Outlined", () => { confirmRemove = false; Render(); })));
         }
         else

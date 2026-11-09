@@ -1,8 +1,8 @@
 ﻿; The installer of SearchDataSender.exe (Inno Setup 6): for this user only, without an administrator, into
 ; %LOCALAPPDATA%\Programs\SearchDataSender, the folder the background sender runs from (Places.InstallDir). A Start menu
 ; entry, a desktop one if chosen, and an entry in Settings › Apps to remove it. Removing it runs
-; SearchDataSender.exe --uninstall first (Uninstall.cs): the question whether to delete from the server what was sent,
-; the background sender stopped and out of Windows' startup, the tool's settings and data gone.
+; SearchDataSender.exe --uninstall first (Uninstall.cs): the background sender stopped and out of Windows' startup, the
+; tool's settings and data gone. What was sent stays on the server.
 ; CI builds it: ISCC /DAppVersion=<x.y.z> installer\SearchDataSender.iss -> dist\SearchDataSender-Setup.exe
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -99,19 +99,14 @@ begin
   Result := BackgroundOn;
 end;
 
-{ Before the files go: SearchDataSender.exe --uninstall (Uninstall.cs), which asks whether to delete from the server
-  what was sent, takes the tool out of Windows' startup and removes its settings and data; asking nothing when silent.
-  Here and not in [UninstallRun], whose Check is decided when installing }
+{ Before the files go: SearchDataSender.exe --uninstall (Uninstall.cs), which takes the tool out of Windows' startup and
+  removes its settings and data }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Params: String;
   ResultCode: Integer;
 begin
   if CurUninstallStep <> usUninstall then
     Exit;
   StopBackground;
-  Params := '--uninstall';
-  if UninstallSilent then
-    Params := Params + ' --quiet';
-  Exec(ExpandConstant('{app}\SearchDataSender.exe'), Params, '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{app}\SearchDataSender.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
