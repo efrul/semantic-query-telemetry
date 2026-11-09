@@ -77,12 +77,13 @@ jobs:
           function Background { Get-Process SearchDataSender -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } }
           function Check($ok, $name) { if (-not $ok) { throw "FAIL  $name" }; Write-Host "PASS  $name" }
           # Not Start-Process -Wait, which waits for the background sender the installer starts too
-          function Setup { $p = Start-Process dist\SearchDataSender-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru; $null = $p.Handle; $p.WaitForExit(); $p.ExitCode }
+          $log = "$env:RUNNER_TEMP\setup.log"
+          function Setup { $p = Start-Process dist\SearchDataSender-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"" -PassThru; $null = $p.Handle; $p.WaitForExit(); $p.ExitCode }
 
           Check ((Setup) -eq 0) 'setup: runs'
           Check (Test-Path $exe) 'setup: the tool in its folder'
           Check ((Get-ItemProperty $entry).DisplayName -and (Get-ItemProperty $entry).UninstallString) 'setup: an entry in Settings > Apps'
-          if (-not (Shortcut)) { Links | Where-Object { $_.Path -notlike '*\Windows PowerShell\*' } | Format-Table -AutoSize | Out-String -Width 300 | Write-Host }
+          if (-not (Shortcut)) { Get-Content $log -Encoding UTF8 | Select-String -Pattern 'icon|shortcut|link|Dest|mode|Error' | Write-Host; Links | Where-Object { $_.Path -like "$env:APPDATA*" } | Format-Table -AutoSize | Out-String -Width 300 | Write-Host }
           Check (Shortcut) 'setup: a Start menu entry'
 
           # As after a while: consent, background sending on and running, a ledger
