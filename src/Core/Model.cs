@@ -10,7 +10,7 @@ using System.Text;
 
 public static class AppInfo
 {
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
     public const string Name = "שליחת נתוני חיפוש";
     public const string AppVersion = "search-data-sender/" + Version;
     public const string UserAgent = "SearchDataSender/" + Version;

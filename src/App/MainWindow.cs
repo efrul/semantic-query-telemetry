@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,7 +21,7 @@ sealed class MainWindow : Window
     List<SourceData> data;
     Selection sel;
     Ledger ledger;
-    bool busy, showList, confirmDelete, confirmWithdraw;
+    bool busy, showList, confirmDelete, confirmWithdraw, confirmRemove;
     string busyText, status;
     bool statusBad;
     long readAt;
@@ -122,7 +123,7 @@ sealed class MainWindow : Window
         busy = true;
         busyText = "שולח…";
         status = null;
-        confirmDelete = confirmWithdraw = false;
+        confirmDelete = confirmWithdraw = confirmRemove = false;
         Render();
         var read = data;
         ThreadPool.QueueUserWorkItem(_ =>
@@ -233,6 +234,27 @@ sealed class MainWindow : Window
         d.SetAutoSend(false);
         d.Settings.WithdrawConsent();
         MessageBox.Show(this, "ההסכמה בוטלה, והכלי לא ישלח יותר כלום. מה שכבר נשלח נשאר במאגר, אלא אם מחקת אותו.", AppInfo.Name,
+            MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+        Close();
+    }
+
+    // The uninstaller of Settings › Apps when the installer put the tool here, which asks itself; else, the bare exe,
+    // the same removal from here after asking
+    void RemoveTool()
+    {
+        if (!d.ManageStartup) return;
+        var uninstaller = Uninstall.Uninstaller();
+        if (uninstaller == null) { confirmRemove = true; Render(); return; }
+        Program.LeaveWindow();
+        Process.Start(new ProcessStartInfo(uninstaller) { UseShellExecute = true });
+        Close();
+    }
+
+    void RemoveHere()
+    {
+        confirmRemove = false;
+        if (!Uninstall.Remove(false, true)) { Render(); return; }
+        MessageBox.Show(this, "הכלי הוסר מהמחשב. אפשר למחוק עכשיו גם את הקובץ שלו:\n" + Places.RunningExe, AppInfo.Name,
             MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
         Close();
     }
@@ -478,13 +500,21 @@ sealed class MainWindow : Window
             rows.Add(Theme.Note(Theme.G_WARN, "לבטל את ההסכמה? הכלי לא ישלח יותר כלום. מה שכבר נשלח נשאר במאגר, אלא אם תמחק אותו קודם.", "WARN", "WARNSOFT"));
             rows.Add(Theme.Row(Theme.Btn(this, "ביטול ההסכמה", "Danger", Withdraw), Theme.Btn(this, "חזרה", "Outlined", () => { confirmWithdraw = false; Render(); })));
         }
+        else if (confirmRemove)
+        {
+            rows.Add(Theme.Note(Theme.G_WARN, "להסיר את הכלי מהמחשב? השליחה ברקע תיפסק, וההגדרות שלו ורשימת מה שנשלח יימחקו. את הקובץ עצמו אפשר למחוק אחר כך.", "WARN", "WARNSOFT"));
+            rows.Add(Theme.Row(Theme.Btn(this, "הסרה", "Danger", RemoveHere), Theme.Btn(this, "חזרה", "Outlined", () => { confirmRemove = false; Render(); })));
+        }
         else
         {
             var del = Theme.Btn(this, "מחיקת כל מה ששלחתי", "Link", () => { confirmDelete = true; Render(); });
             del.IsEnabled = !busy;
             var withdraw = Theme.Btn(this, "ביטול ההסכמה", "Link", () => { confirmWithdraw = true; Render(); });
             withdraw.IsEnabled = !busy;
+            var remove = Theme.Btn(this, "הסרת הכלי מהמחשב", "Link", RemoveTool);
+            remove.IsEnabled = !busy;
             rows.Add(Theme.Row(del, withdraw));
+            rows.Add(Theme.Row(remove));
         }
         return Theme.Card(rows.ToArray());
     }

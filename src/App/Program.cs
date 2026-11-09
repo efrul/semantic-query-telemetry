@@ -14,9 +14,21 @@ using System.Windows.Interop;
 [assembly: System.Reflection.AssemblyFileVersion(AppInfo.Version + ".0")]
 
 // SearchDataSender.exe: the window; --background: the background sender (only when the user turned it on);
+// --uninstall [--quiet]: what the uninstaller runs before it removes the files (Uninstall.cs);
 // --selftest <folder>: the tests, with a report and pictures of the windows in <folder>.
 static class Program
 {
+    static Mutex single;
+
+    // Lets go of the window's mutex, which the uninstaller waits for, before the window starts it
+    public static void LeaveWindow()
+    {
+        if (single == null) return;
+        try { single.ReleaseMutex(); }
+        catch (ApplicationException) { }
+        single = null;
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -24,9 +36,12 @@ static class Program
             return SelfTest.Run(args.Length >= 2 ? args[1] : Path.Combine(Path.GetTempPath(), "search-data-sender-selftest"));
         if (args.Length >= 1 && args[0] == "--background")
             return Background.Run();
+        if (args.Length >= 1 && args[0] == "--uninstall")
+            return Uninstall.Run(Array.IndexOf(args, "--quiet") > 0);
 
         bool first;
-        using (var single = new Mutex(true, Places.WindowMutex, out first))
+        var mutex = new Mutex(true, Places.WindowMutex, out first);
+        using (mutex)
         {
             if (!first)
             {
@@ -35,6 +50,7 @@ static class Program
                 if (EventWaitHandle.TryOpenExisting(Places.ShowEvent, out show)) using (show) show.Set();
                 return 0;
             }
+            single = mutex;
             var deps = Deps.ForThisComputer();
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.DispatcherUnhandledException += (s, e) =>

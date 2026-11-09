@@ -1,6 +1,7 @@
 # Tests the core on Linux (Mono, as C# 5), builds SearchDataSender.exe on Windows with the C# compiler that comes with
 # it, and runs its self-test: the same tests, the registry, and the windows drawn to pictures (uploaded with the exe).
-# Given a version on workflow_dispatch it also publishes a release with the file.
+# Then builds its installer (Inno Setup), and installs, updates and removes it. Given a version on workflow_dispatch
+# (the one in src/Core/Model.cs) it also publishes a release with the installer.
 name: Build
 
 on:
@@ -45,12 +46,81 @@ jobs:
           Copy-Item "$dir\*.png", "$dir\selftest-report.txt" selftest
           if ($p.ExitCode -ne 0) { throw 'self-test failed' }
 
+      # The installer, of the version in src/Core/Model.cs (a release must be that version)
+      - name: Installer
+        shell: powershell
+        env:
+          RELEASE: ${{ inputs.version }}
+        run: |
+          $v = (Select-String -Path src\Core\Model.cs -Pattern 'const string Version = "([0-9.]+)"').Matches[0].Groups[1].Value
+          if ($env:RELEASE -and $env:RELEASE -ne "v$v") { throw "the release $env:RELEASE is not the tool's version v$v (src\Core\Model.cs)" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Qp "/DAppVersion=$v" installer\SearchDataSender.iss
+          if ($LASTEXITCODE) { throw 'the installer did not build' }
+
+      # Installs it, updates it while the background sender runs, and removes it: nothing of the tool may be left
+      - name: Install, update and uninstall
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = "$env:LOCALAPPDATA\Programs\SearchDataSender"
+          $exe = "$app\SearchDataSender.exe"
+          $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{623648DC-7C9D-4C51-8DA7-127FFFC75A23}_is1'
+          $settings = 'HKCU:\Software\SearchDataSender'
+          $data = "$env:LOCALAPPDATA\SearchDataSender"
+          $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $shell = New-Object -ComObject WScript.Shell
+          function Shortcut { Get-ChildItem $menu -Filter *.lnk | Where-Object { $shell.CreateShortcut($_.FullName).TargetPath -eq $exe } }
+          function Background { Get-Process SearchDataSender -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } }
+          function Check($ok, $name) { if (-not $ok) { throw "FAIL  $name" }; Write-Host "PASS  $name" }
+          # Not Start-Process -Wait, which waits for the background sender the installer starts too
+          function Setup { $p = Start-Process dist\SearchDataSender-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru; $null = $p.Handle; $p.WaitForExit(); $p.ExitCode }
+
+          Check ((Setup) -eq 0) 'setup: runs'
+          Check (Test-Path $exe) 'setup: the tool in its folder'
+          Check ((Get-ItemProperty $entry).DisplayName -and (Get-ItemProperty $entry).UninstallString) 'setup: an entry in Settings > Apps'
+          Check (Shortcut) 'setup: a Start menu entry'
+
+          # As after a while: consent, background sending on and running, a ledger
+          New-Item -Force $settings | Out-Null
+          foreach ($pair in @(('consent', '1'), ('auto_send', '1'), ('sender', '00000000-0000-4000-8000-000000000000'))) {
+            New-ItemProperty $settings -Name $pair[0] -Value $pair[1] -PropertyType String -Force | Out-Null }
+          New-Item -ItemType Directory -Force "$data\fonts" | Out-Null
+          Set-Content "$data\ledger.txt" 'S x'
+          New-ItemProperty $run -Name SearchDataSender -Value "`"$exe`" --background" -PropertyType String -Force | Out-Null
+          Start-Process $exe -ArgumentList '--background'
+          Start-Sleep 3
+          $before = Background
+          Check $before 'background: running'
+
+          Check ((Setup) -eq 0) 'update: runs while the background sender runs'
+          Start-Sleep 3
+          $after = Background
+          Check ($after -and -not ($after | Where-Object { $_.Id -eq $before.Id })) 'update: the background sender stopped and started again from the new file'
+
+          $uninstaller = (Get-ItemProperty $entry).UninstallString.Trim('"')
+          $p = Start-Process $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
+          $p.WaitForExit()
+          # The uninstaller goes on from a copy of itself in the temp folder
+          for ($i = 0; $i -lt 120 -and ((Test-Path $app) -or (Test-Path $entry)); $i++) { Start-Sleep -Milliseconds 500 }
+          Start-Sleep 2
+          Check (-not (Test-Path $app)) 'uninstall: the tool and its folder gone'
+          Check (-not (Test-Path $entry)) 'uninstall: no entry in Settings > Apps'
+          Check (-not (Shortcut)) 'uninstall: no Start menu entry'
+          Check (-not (Background)) 'uninstall: the background sender stopped'
+          Check ($null -eq (Get-ItemProperty $run -Name SearchDataSender -ErrorAction SilentlyContinue)) 'uninstall: out of Windows startup'
+          Check (-not (Test-Path $settings)) 'uninstall: the settings gone'
+          Check (-not (Test-Path $data)) 'uninstall: the ledger and data folder gone'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: SearchDataSender
           path: |
             dist/SearchDataSender.exe
+            dist/SearchDataSender-Setup.exe
             selftest/
 
       - name: Release
@@ -59,4 +129,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "$VERSION" dist/SearchDataSender.exe --target "$GITHUB_SHA" --title "שליחת נתוני חיפוש $VERSION" --notes-file .github/release-notes.md
+        run: gh release create "$VERSION" dist/SearchDataSender-Setup.exe --target "$GITHUB_SHA" --title "שליחת נתוני חיפוש $VERSION" --notes-file .github/release-notes.md

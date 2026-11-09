@@ -50,6 +50,17 @@ static class SelfTest
         }
         finally { Registry.CurrentUser.DeleteSubKeyTree(key, false); }
         Check(ZayitPrefs.Read("search-data-sender-missing-value") == null, "registry: a missing Zayit preference is null");
+
+        // Removing the tool: its settings key and its data folder go
+        const string removeKey = Places.SettingsKey + ".SelfTestRemove";
+        var data = Path.Combine(dir, "remove-data");
+        Directory.CreateDirectory(Path.Combine(data, "fonts"));
+        File.WriteAllText(Path.Combine(data, "ledger.txt"), "S x\n");
+        new RegistryStore(removeKey).Set("sender", "x");
+        Uninstall.Clean(removeKey, data);
+        bool keyGone;
+        using (var k = Registry.CurrentUser.OpenSubKey(removeKey)) keyGone = k == null;
+        Check(keyGone && !Directory.Exists(data), "uninstall: the tool's settings key and data folder are removed");
     }
 
     sealed class OkService : IService

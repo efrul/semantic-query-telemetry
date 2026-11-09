@@ -64,7 +64,7 @@ database, where they are published for everyone, to improve search in all Torah-
 ## שליחה ברקע
 
 כשמסמנים אותה, הכלי:
-1. מעתיק את עצמו ל־`%LOCALAPPDATA%\Programs\SearchDataSender`;
+1. רץ מהתיקייה שבה הותקן, `%LOCALAPPDATA%\Programs\SearchDataSender`;
 2. נרשם להפעלה עם Windows ב־`HKCU\...\Run`. אין משימה מתוזמנת ואין שירות;
 3. שולח כשיש חיבור לרשת, אחרי התעוררות משינה ופעם בשעה, ולא יותר מפעם בעשר דקות.
 
@@ -72,33 +72,46 @@ database, where they are published for everyone, to improve search in all Torah-
 - **ההגדרות:** במפתח שלו בלבד, `HKCU\Software\SearchDataSender`;
 - **מה שכבר נשלח:** בקובץ `%LOCALAPPDATA%\SearchDataSender\ledger.txt`, שמכיל רק טביעות (SHA-256), לא חיפושים.
 
-## התקנה
+## התקנה והסרה
 
-1. מורידים את `SearchDataSender.exe` מעמוד ה־[Releases](../../releases/latest).
-2. מפעילים. אין התקנה.
+1. מורידים את `SearchDataSender-Setup.exe` מעמוד ה־[Releases](../../releases/latest).
+2. מתקינים. ההתקנה היא למשתמש הנוכחי בלבד, בלי הרשאות מנהל, לתיקייה `%LOCALAPPDATA%\Programs\SearchDataSender`. היא
+   מוסיפה קיצור דרך בתפריט התחלה, ואם בוחרים גם בשולחן העבודה.
 
-הקובץ לא חתום דיגיטלית, ולכן Windows SmartScreen עלול להזהיר בפעם הראשונה. כדי להמשיך לוחצים "מידע נוסף" ואז "הפעל בכל
-זאת". הכלי דורש Windows 10 או 11: ה־.NET Framework 4.8 ו־SQLite (`winsqlite3.dll`) שהכלי צריך כבר מובנים בהם.
+גרסה חדשה מתקינים מעל הקודמת. ההגדרות ומה שכבר נשלח נשמרים, והשליחה ברקע, אם פעלה, ממשיכה מהקובץ החדש.
+
+**הסרה:** ב"הגדרות › אפליקציות" של Windows, או בכפתור "הסרת הכלי מהמחשב" בחלון. ההסרה:
+- שואלת אם למחוק גם מהשרת ומהאתר את מה שנשלח מהמחשב (רק אם נשלח משהו);
+- עוצרת את השליחה ברקע ומוציאה את הכלי מההפעלה עם Windows;
+- מוחקת את הכלי, את קיצורי הדרך, את ההגדרות ואת רשימת מה שנשלח. מתוכנות אחרות היא לא נוגעת בכלום.
+
+אם המחיקה מהשרת נכשלת, ההגדרות נשארות במחשב, כדי שאחרי התקנה מחדש אפשר יהיה למחוק משם.
+
+הקבצים לא חתומים דיגיטלית, ולכן Windows SmartScreen עלול להזהיר בפעם הראשונה. כדי להמשיך לוחצים "מידע נוסף" ואז "הפעל
+בכל זאת". הכלי דורש Windows 10 או 11: ה־.NET Framework 4.8 ו־SQLite (`winsqlite3.dll`) שהכלי צריך כבר מובנים בהם.
 
 ## בנייה ובדיקה
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1          # dist\SearchDataSender.exe
 dist\SearchDataSender.exe --selftest C:\Temp\sds-test       # הבדיקות; הדוח ותמונות החלונות בתיקייה
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=2.1.0 installer\SearchDataSender.iss   # dist\SearchDataSender-Setup.exe
 ```
 
 ```bash
 tools/test-core.sh                                          # בדיקות הליבה ב־Linux, עם Mono (C# 5, כמו המהדר של Windows)
 ```
 
-כל דחיפה מריצה את הבדיקות ב־GitHub Actions: הליבה ב־Linux, והבנייה והבדיקה העצמית ב־Windows, עם תמונות החלונות.
+כל דחיפה מריצה את הבדיקות ב־GitHub Actions: הליבה ב־Linux, והבנייה והבדיקה העצמית ב־Windows, עם תמונות החלונות. אחר כך
+היא בונה את תוכנת ההתקנה, מתקינה, מעדכנת בזמן שהשליחה ברקע רצה, ומסירה, ובודקת שלא נשאר מהכלי כלום.
 
 ## מבנה הפרויקט
 
 | תיקייה | מה בה |
 |---|---|
 | `src/Core/` | בלי ממשק, נבנה גם ב־Linux: מבנה החבילה ומגבלות השירות (`Model.cs`), הקוראים של זית, פרדס (`SeforimAppReader.cs`) ואוצריא, SQLite, יומן מה שנשלח (`Ledger.cs`), השירות (`Service.cs`), והבחירה והשליחה (`Engine.cs`) |
-| `src/App/` | Windows: מסך ההסכמה (`Program.cs`), החלון (`MainWindow.cs`), ההגדרות ברישום והשליחה ברקע (`Windows.cs`), העיצוב (`Theme.cs`), הבדיקה העצמית |
+| `src/App/` | Windows: מסך ההסכמה (`Program.cs`), החלון (`MainWindow.cs`), ההגדרות ברישום והשליחה ברקע (`Windows.cs`), ההסרה (`Uninstall.cs`), העיצוב (`Theme.cs`), הבדיקה העצמית |
+| `installer/` | תוכנת ההתקנה (Inno Setup): למשתמש הנוכחי, עם רשומה ב"הגדרות › אפליקציות" |
 | `tests/` | הבדיקות, על נתונים מדומים בפורמטים האמיתיים של זית, פרדס ואוצריא |
 
 ## רישיון
