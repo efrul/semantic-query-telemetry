@@ -282,8 +282,8 @@ sealed class MainWindow : Window
     {
         content.Children.Clear();
         var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 0, 4) };
-        var branch = Theme.Image("branch.png");
-        if (branch != null) head.Children.Add(Theme.Picture(branch, 30, 30));
+        var mark = Theme.Image("app.png");
+        if (mark != null) head.Children.Add(Theme.Picture(mark, 30, 30));
         var h = Theme.T(AppInfo.Name, 20, "TEXT", true);
         h.Margin = new Thickness(10, 0, 0, 0);
         h.VerticalAlignment = VerticalAlignment.Center;

@@ -117,7 +117,7 @@ tools/test-core.sh                                          # בדיקות הל�
 
 AGPL-3.0. ראו `LICENSE`.
 
-הכלי משתמש בתמונת הרקע ובענף מהלוגו של [זית](https://github.com/kdroidFilter/Zayit) (AGPL-3.0). הגופן Noto Serif Hebrew מופץ
+הכלי משתמש בתמונת הרקע של [זית](https://github.com/kdroidFilter/Zayit) (AGPL-3.0). הגופן Noto Serif Hebrew מופץ
 ברישיון SIL Open Font License 1.1, ראו `assets/OFL.txt`.
 
 © 2026 efrul
