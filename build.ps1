@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force "$root\dist" | Out-Null
 
 $refs = @("/r:$fw\WPF\PresentationFramework.dll", "/r:$fw\WPF\PresentationCore.dll", "/r:$fw\WPF\WindowsBase.dll",
           "/r:$fw\System.Xaml.dll", "/r:System.Core.dll", "/r:System.dll")
-$res = 'notoserifhebrew.ttf', 'wallpaper.jpg', 'wallpaper_dark.jpg', 'branch.png', 'app.png' | ForEach-Object { "/resource:$root\assets\$_,$_" }
+$res = 'notoserifhebrew.ttf', 'wallpaper.jpg', 'wallpaper_dark.jpg', 'app.png' | ForEach-Object { "/resource:$root\assets\$_,$_" }
 $src = @(Get-ChildItem "$root\src\Core\*.cs", "$root\src\App\*.cs" | ForEach-Object { $_.FullName }) +
        @(Get-ChildItem "$root\tests\*.cs" | Where-Object { $_.Name -ne 'LinuxMain.cs' } | ForEach-Object { $_.FullName })
 

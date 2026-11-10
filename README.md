@@ -94,7 +94,7 @@ database, where they are published for everyone, to improve search in all Torah-
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1          # dist\SearchDataSender.exe
 dist\SearchDataSender.exe --selftest C:\Temp\sds-test       # הבדיקות; הדוח ותמונות החלונות בתיקייה
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=2.1.0 installer\SearchDataSender.iss   # dist\SearchDataSender-Setup.exe
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=2.1.1 installer\SearchDataSender.iss   # dist\SearchDataSender-Setup.exe
 ```
 
 ```bash
@@ -117,7 +117,7 @@ tools/test-core.sh                                          # בדיקות הל�
 
 AGPL-3.0. ראו `LICENSE`.
 
-הכלי משתמש בתמונת הרקע ובענף מהלוגו של [זית](https://github.com/kdroidFilter/Zayit) (AGPL-3.0). הגופן Noto Serif Hebrew מופץ
+הכלי משתמש בתמונת הרקע של [זית](https://github.com/kdroidFilter/Zayit) (AGPL-3.0). הגופן Noto Serif Hebrew מופץ
 ברישיון SIL Open Font License 1.1, ראו `assets/OFL.txt`.
 
 © 2026 efrul

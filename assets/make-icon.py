@@ -1,52 +1,69 @@
-# The tool's icon: the olive branch of Zayit's logo on a cream tile, with a gold badge of an upward send arrow and tray
-# (sending search telemetry & feedback). Zayit Move and Zayit Export have the same tile with their own badges.
-# python make-icon.py [LOGO.png]  ->  app.ico, app.png and app-256.png next to this script
-import sys, os
-from PIL import Image, ImageDraw
+# The tool's icon, in Zayit's and Pardes's style: a gold frame round a black tile with a lighter centre, as Zayit's,
+# and in it a gold magnifying glass with an upward send arrow in its lens (searches, sent), gold in a vertical gradient
+# as Pardes's letters. The window's title bar and header show it too.
+# python make-icon.py  ->  app.ico, app.png and app-256.png next to this script
+import os
+from PIL import Image, ImageDraw, ImageFilter
 
 here = os.path.dirname(os.path.abspath(__file__))
-if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
-    logo = Image.open(sys.argv[1]).convert("RGBA")
-    branch = logo.crop((915, 0, logo.width, logo.height))
-    branch = branch.crop(branch.getbbox())
-else:
-    branch = Image.open(os.path.join(here, "branch.png")).convert("RGBA")
-    branch = branch.crop(branch.getbbox())
-
 S = 1024
+GOLD_TOP, GOLD_BOT = (246, 220, 140), (186, 137, 46)
+
+
+def radial(center, edge):
+    g = Image.new("RGBA", (S, S))
+    px = g.load()
+    c = S / 2
+    for y in range(S):
+        for x in range(S):
+            f = min(1.0, (((x - c) ** 2 + (y - c * 0.92) ** 2) ** 0.5) / (c * 1.15))
+            px[x, y] = tuple(int(a * (1 - f) + b * f) for a, b in zip(center, edge)) + (255,)
+    return g
+
+
+def vgrad(top, bot):
+    g = Image.new("RGBA", (S, S))
+    d = ImageDraw.Draw(g)
+    for y in range(S):
+        f = y / S
+        d.line((0, y, S, y), fill=tuple(int(a * (1 - f) + b * f) for a, b in zip(top, bot)) + (255,))
+    return g
+
+
+def rounded(box, radius):
+    m = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(m).rounded_rectangle(box, radius=radius, fill=255)
+    return m
+
+
+# The frame and the tile
 tile = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-mask = Image.new("L", (S, S), 0)
-ImageDraw.Draw(mask).rounded_rectangle((24, 24, S - 24, S - 24), radius=220, fill=255)
-grad = Image.new("RGBA", (S, S))
-gd = ImageDraw.Draw(grad)
-for y in range(S):
-    t = y / S
-    c = tuple(int(a * (1 - t) + b * t) for a, b in zip((252, 248, 236), (240, 226, 190)))
-    gd.line((0, y, S, y), fill=c + (255,))
-tile.paste(grad, (0, 0), mask)
-ImageDraw.Draw(tile).rounded_rectangle((24, 24, S - 24, S - 24), radius=220, outline=(190, 145, 23, 255), width=14)
+tile.paste(vgrad((253, 236, 166), (214, 170, 76)), (0, 0), rounded((0, 0, S - 1, S - 1), 230))
+tile.paste(radial((30, 30, 30), (4, 4, 4)), (0, 0), rounded((62, 62, S - 63, S - 63), 175))
 
-b = branch.copy()
-h = 760
-b = b.resize((int(b.width * h / b.height), h), Image.LANCZOS)
-tile.alpha_composite(b, ((S - b.width) // 2 + 60, (S - h) // 2 - 40))
+# The glyph: the lens, its handle with round ends, the send arrow
+glyph = Image.new("L", (S, S), 0)
+d = ImageDraw.Draw(glyph)
+cx, cy, r, ring = 450, 440, 220, 66
+end, w = (770, 760), 106
+k = 0.7071
+x0, y0 = cx + (r - 10) * k, cy + (r - 10) * k
+d.line((x0, y0, end[0], end[1]), fill=255, width=w)
+for x, y in ((x0, y0), end):
+    d.ellipse((x - w / 2, y - w / 2, x + w / 2, y + w / 2), fill=255)
+d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+d.ellipse((cx - r + ring, cy - r + ring, cx + r - ring, cy + r - ring), fill=0)
+a = r / 250
+d.line((cx, cy + 100 * a, cx, cy - 40 * a), fill=255, width=int(60 * a))
+d.polygon([(cx, cy - 132 * a), (cx - 90 * a, cy - 22 * a), (cx + 90 * a, cy - 22 * a)], fill=255)
 
-# the badge: a gold circle with an open tray at the bottom and an upward arrow sending out of it
-cx, cy, r = 265, 760, 205
-badge = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-d = ImageDraw.Draw(badge)
-d.ellipse((cx - r - 14, cy - r - 14, cx + r + 14, cy + r + 14), fill=(255, 255, 255, 255))
-d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(190, 145, 23, 255))
-
-# tray at bottom of badge
-tw, th = 210, 80
-tx0, ty0 = cx - tw // 2, cy + 25
-d.line([(tx0, ty0), (tx0, ty0 + th), (tx0 + tw, ty0 + th), (tx0 + tw, ty0)], fill="white", width=26, joint="curve")
-
-# upward arrow shaft and head
-d.line((cx, cy + 52, cx, cy - 82), fill="white", width=32)
-d.polygon([(cx, cy - 138), (cx - 68, cy - 54), (cx + 68, cy - 54)], fill="white")
-tile.alpha_composite(badge)
+# A soft shadow under it, then the gold
+shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+shadow.putalpha(glyph.filter(ImageFilter.GaussianBlur(14)).point(lambda v: v * 110 // 255))
+tile.alpha_composite(shadow.transform(shadow.size, Image.AFFINE, (1, 0, 0, 0, 1, -10)))
+gold = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+gold.paste(vgrad(GOLD_TOP, GOLD_BOT), (0, 0), glyph)
+tile.alpha_composite(gold)
 
 sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 imgs = [tile.resize((s, s), Image.LANCZOS) for s in sizes]
