@@ -94,7 +94,7 @@ database, where they are published for everyone, to improve search in all Torah-
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1          # dist\SearchDataSender.exe
 dist\SearchDataSender.exe --selftest C:\Temp\sds-test       # הבדיקות; הדוח ותמונות החלונות בתיקייה
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=2.1.0 installer\SearchDataSender.iss   # dist\SearchDataSender-Setup.exe
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=2.1.1 installer\SearchDataSender.iss   # dist\SearchDataSender-Setup.exe
 ```
 
 ```bash
